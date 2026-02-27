@@ -144,6 +144,34 @@ body::before {
   animation: fade-up 720ms ease both;
 }
 
+.planner-page,
+.result-page {
+  animation: fade-up 620ms ease both;
+}
+
+.result-page {
+  display: grid;
+  gap: 12px;
+}
+
+.result-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.result-title {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #f0f0f0;
+  letter-spacing: 0.02em;
+}
+
+.result-page .result {
+  margin-top: 0;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -359,6 +387,78 @@ select:focus {
   padding: 12px;
 }
 
+.macrocycle-panel {
+  overflow: hidden;
+}
+
+.cycle-week-list {
+  display: grid;
+  gap: 10px;
+}
+
+.cycle-week {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cycle-week summary {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 40px 12px 12px;
+}
+
+.cycle-week summary::-webkit-details-marker {
+  display: none;
+}
+
+.cycle-week summary::after {
+  content: "+";
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: #e8e8e8;
+  font-size: 0.95rem;
+}
+
+.cycle-week[open] summary::after {
+  content: "-";
+}
+
+.cycle-week[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.cycle-week-title {
+  color: #f3f3f3;
+  font-size: 0.93rem;
+  font-weight: 700;
+}
+
+.cycle-week-note {
+  color: var(--muted);
+  font-size: 0.87rem;
+}
+
+.cycle-week-body {
+  padding: 12px;
+}
+
+.nested-week-grid {
+  margin-top: 10px;
+}
+
 .nutrition-panel h3 {
   margin: 0 0 6px;
   font-size: 1rem;
@@ -442,6 +542,11 @@ select:focus {
   .macro-grid,
   .auth-switch {
     grid-template-columns: 1fr;
+  }
+
+  .result-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .session-row {

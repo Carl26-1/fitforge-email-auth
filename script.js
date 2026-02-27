@@ -1,5 +1,8 @@
 const form = document.getElementById("plan-form");
 const result = document.getElementById("result");
+const plannerPage = document.getElementById("planner-page");
+const resultPage = document.getElementById("result-page");
+const backToFormBtn = document.getElementById("back-to-form-btn");
 const appShell = document.getElementById("app-shell");
 const authShell = document.getElementById("auth-shell");
 const loginForm = document.getElementById("login-form");
@@ -486,9 +489,22 @@ async function apiRequest(url, options = {}) {
   return { response, payload };
 }
 
+function showPlannerPage() {
+  plannerPage?.classList.remove("is-hidden");
+  resultPage?.classList.add("is-hidden");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function showResultPage() {
+  plannerPage?.classList.add("is-hidden");
+  resultPage?.classList.remove("is-hidden");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 function switchToApp(userLabel) {
   authShell.classList.add("is-hidden");
   appShell.classList.remove("is-hidden");
+  showPlannerPage();
   const modeLabel = useLocalAuth ? "本地模式" : "云端模式";
   sessionEmail.textContent = `已登录账号：${userLabel}（${modeLabel}）`;
 }
@@ -1102,42 +1118,75 @@ function getMacrocycleTemplate(goalPlanKey, selectedGoal) {
   };
 }
 
-function buildMacrocycleSection(values, goalProfile) {
+function getWeekPhaseLabel(weekNumber) {
+  const inBlockWeek = ((weekNumber - 1) % 4) + 1;
+  if (inBlockWeek === 1) {
+    return "基线周";
+  }
+  if (inBlockWeek === 2) {
+    return "容量推进周";
+  }
+  if (inBlockWeek === 3) {
+    return "强度推进周";
+  }
+  return "减量恢复周";
+}
+
+function stripProgressionPrefix(text) {
+  return String(text || "").replace(/^第\d周(?:（[^）]*）)?：/, "").trim();
+}
+
+function buildWeekCards(values, config, goalPlanKey, sessionKeys, trainingDayIndices) {
+  const trainingDaySet = new Set(trainingDayIndices);
+  const weekCards = [];
+  let sessionPointer = 0;
+
+  for (let dayIndex = 0; dayIndex < dayNames.length; dayIndex += 1) {
+    if (trainingDaySet.has(dayIndex)) {
+      const sessionKey = sessionKeys[sessionPointer];
+      weekCards.push(buildDayCard(dayIndex, config.catalog[sessionKey], values, goalPlanKey));
+      sessionPointer += 1;
+    } else {
+      weekCards.push(buildRestDayCard(dayIndex));
+    }
+  }
+
+  return weekCards.join("");
+}
+
+function buildMacrocycleSection(values, goalProfile, config, sessionKeys, trainingDayIndices) {
   const cycleWeeks = values.cycleWeeks;
   const template = getMacrocycleTemplate(goalProfile.planKey, values.goal);
-  const blockCards = [];
-  let startWeek = 1;
-  let blockIndex = 0;
+  const cycleWeeksHtml = [];
 
-  while (startWeek <= cycleWeeks) {
-    const endWeek = Math.min(cycleWeeks, startWeek + 3);
+  for (let week = 1; week <= cycleWeeks; week += 1) {
+    const blockIndex = Math.floor((week - 1) / 4);
+    const inBlockWeek = (week - 1) % 4;
     const focus = template.focus[Math.min(blockIndex, template.focus.length - 1)];
-    const stepItems = [];
-    for (let week = startWeek; week <= endWeek; week += 1) {
-      const inBlockWeek = week - startWeek;
-      const stepText = template.progression[Math.min(inBlockWeek, template.progression.length - 1)];
-      stepItems.push(`<li><strong>第 ${week} 周：</strong>${stepText.replace(/^第\d周：/, "")}</li>`);
-    }
+    const progression = stripProgressionPrefix(template.progression[inBlockWeek]);
+    const weekCards = buildWeekCards(values, config, goalProfile.planKey, sessionKeys, trainingDayIndices);
 
-    blockCards.push(`
-      <article class="day-card">
-        <h3>第 ${startWeek}-${endWeek} 周 · ${focus}</h3>
-        <p>阶段目标：${template.label}</p>
-        <ul>${stepItems.join("")}</ul>
-      </article>
+    cycleWeeksHtml.push(`
+      <details class="cycle-week"${week === 1 ? " open" : ""}>
+        <summary>
+          <span class="cycle-week-title">第 ${week} 周 · ${getWeekPhaseLabel(week)} · ${focus}</span>
+          <span class="cycle-week-note">${escapeHtml(progression)}</span>
+        </summary>
+        <div class="cycle-week-body">
+          <p class="hint">训练日排期：${formatSchedule(trainingDayIndices)}｜恢复日：${7 - values.days} 天</p>
+          <div class="week-grid nested-week-grid">${weekCards}</div>
+        </div>
+      </details>
     `);
-
-    startWeek = endWeek + 1;
-    blockIndex += 1;
   }
 
   return `
-    <section class="nutrition-panel">
+    <section class="nutrition-panel macrocycle-panel">
       <h3>大周期总计划（${cycleWeeks} 周）</h3>
       <p class="nutrition-summary">
         结构：每 4 周为一个小周期（3 周渐进 + 1 周减量/恢复），总计 ${Math.ceil(cycleWeeks / 4)} 个小周期。
       </p>
-      <div class="week-grid">${blockCards.join("")}</div>
+      <div class="cycle-week-list">${cycleWeeksHtml.join("")}</div>
       <p class="footnote">进阶原则：每周只提升一个维度（组数、负荷或训练时长），避免同时大幅增加。</p>
     </section>
   `;
@@ -1176,26 +1225,13 @@ function generatePlan(values) {
   const sessionKeys = config.split[values.days];
   const trainingDayIndices = getTrainingDayIndices(values.days);
   const nutrition = getNutritionPlan(values, goalProfile);
-  const weekCards = [];
-  let sessionPointer = 0;
-  for (let dayIndex = 0; dayIndex < dayNames.length; dayIndex += 1) {
-    if (trainingDayIndices.includes(dayIndex)) {
-      const sessionKey = sessionKeys[sessionPointer];
-      weekCards.push(buildDayCard(dayIndex, config.catalog[sessionKey], values, goalProfile.planKey));
-      sessionPointer += 1;
-    } else {
-      weekCards.push(buildRestDayCard(dayIndex));
-    }
-  }
-
   const restDays = 7 - values.days;
   result.innerHTML = `
-    <h2>你的一周训练 + 饮食计划</h2>
+    <h2>你的大周期 + 每日训练计划</h2>
     <p class="plan-summary">
       目标：${goalProfile.displayLabel}｜水平：${levelLabel(values.level)}｜训练频率：每周 ${values.days} 天｜恢复日：${restDays} 天｜总周期：${values.cycleWeeks} 周｜推荐排期：${formatSchedule(trainingDayIndices)}
     </p>
-    ${buildMacrocycleSection(values, goalProfile)}
-    <div class="week-grid">${weekCards.join("")}</div>
+    ${buildMacrocycleSection(values, goalProfile, config, sessionKeys, trainingDayIndices)}
     ${buildEvidenceSection(values, config, sessionKeys, goalProfile)}
     ${buildNutritionSection(nutrition, values)}
     <p class="footnote">每次训练前热身 8-10 分钟，训练后拉伸 5-8 分钟。若出现明显疼痛，请暂停并调整动作。</p>
@@ -1231,6 +1267,7 @@ form.addEventListener("submit", (event) => {
       <h2>你的一周训练 + 饮食计划</h2>
       <p class="hint">选择“其他（自定义）”时，请填写你的具体目标。</p>
     `;
+    showResultPage();
     return;
   }
 
@@ -1242,11 +1279,13 @@ form.addEventListener("submit", (event) => {
 
   try {
     generatePlan(payload);
+    showResultPage();
   } catch {
     result.innerHTML = `
       <h2>你的一周训练 + 饮食计划</h2>
       <p class="hint">生成失败，请检查输入后重试。</p>
     `;
+    showResultPage();
   } finally {
     planGenerating = false;
     if (planSubmitBtn) {
@@ -1258,6 +1297,7 @@ form.addEventListener("submit", (event) => {
 
 goalSelect.addEventListener("change", syncCustomGoalField);
 syncCustomGoalField();
+backToFormBtn?.addEventListener("click", showPlannerPage);
 modeLoginBtn.addEventListener("click", () => setAuthMode("login"));
 modeRegisterBtn.addEventListener("click", () => setAuthMode("register"));
 setAuthMode("login");

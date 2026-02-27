@@ -52,94 +52,102 @@
       </div>
     </header>
 
-    <section class="card">
-      <form id="plan-form" class="form-grid">
-        <label>
-          <span>训练目标</span>
-          <select id="goal" required>
-            <option value="fat-loss">减脂塑形</option>
-            <option value="muscle-gain">增肌增力</option>
-            <option value="endurance">提升耐力</option>
-            <option value="strength">提升力量</option>
-            <option value="recomp">体态重塑（减脂+增肌）</option>
-            <option value="general-fitness">提升健康体能</option>
-            <option value="mobility">灵活性与体态改善</option>
-            <option value="custom">其他（自定义）</option>
-          </select>
-        </label>
+    <section id="planner-page" class="planner-page">
+      <section class="card">
+        <form id="plan-form" class="form-grid">
+          <label>
+            <span>训练目标</span>
+            <select id="goal" required>
+              <option value="fat-loss">减脂塑形</option>
+              <option value="muscle-gain">增肌增力</option>
+              <option value="endurance">提升耐力</option>
+              <option value="strength">提升力量</option>
+              <option value="recomp">体态重塑（减脂+增肌）</option>
+              <option value="general-fitness">提升健康体能</option>
+              <option value="mobility">灵活性与体态改善</option>
+              <option value="custom">其他（自定义）</option>
+            </select>
+          </label>
 
-        <label id="custom-goal-wrapper" class="is-hidden">
-          <span>自定义目标描述</span>
-          <input id="custom-goal" type="text" placeholder="例：备战 10km / 改善体态 / 提升上肢力量">
-        </label>
+          <label id="custom-goal-wrapper" class="is-hidden">
+            <span>自定义目标描述</span>
+            <input id="custom-goal" type="text" placeholder="例：备战 10km / 改善体态 / 提升上肢力量">
+          </label>
 
-        <label>
-          <span>训练水平</span>
-          <select id="level" required>
-            <option value="beginner">新手</option>
-            <option value="intermediate">进阶</option>
-            <option value="advanced">高级</option>
-          </select>
-        </label>
-        <div class="level-guide">
-          <p class="guide-title">训练水平判断标准（用于自动分级）</p>
-          <ul>
-            <li>新手：系统训练通常不足 6 个月，蹲/髋铰链/推/拉动作模式尚不稳定。</li>
-            <li>进阶：系统训练约 6-24 个月，主要动作技术稳定，能连续 8-12 周按计划训练。</li>
-            <li>高级：系统训练超过 24 个月，动作效率高，能进行周期化训练与恢复管理。</li>
-            <li>重点：训练水平以动作质量、训练连续性和负荷管理能力判定，不用主观强度分级。</li>
-          </ul>
-        </div>
+          <label>
+            <span>训练水平</span>
+            <select id="level" required>
+              <option value="beginner">新手</option>
+              <option value="intermediate">进阶</option>
+              <option value="advanced">高级</option>
+            </select>
+          </label>
+          <div class="level-guide">
+            <p class="guide-title">训练水平判断标准（用于自动分级）</p>
+            <ul>
+              <li>新手：系统训练通常不足 6 个月，蹲/髋铰链/推/拉动作模式尚不稳定。</li>
+              <li>进阶：系统训练约 6-24 个月，主要动作技术稳定，能连续 8-12 周按计划训练。</li>
+              <li>高级：系统训练超过 24 个月，动作效率高，能进行周期化训练与恢复管理。</li>
+              <li>重点：训练水平以动作质量、训练连续性和负荷管理能力判定，不用主观强度分级。</li>
+            </ul>
+          </div>
 
-        <label>
-          <span>每周训练天数</span>
-          <input id="days" type="number" min="2" max="6" value="4" required>
-        </label>
+          <label>
+            <span>每周训练天数</span>
+            <input id="days" type="number" min="2" max="6" value="4" required>
+          </label>
 
-        <label>
-          <span>总周期长度（周）</span>
-          <input id="cycle-weeks" type="number" min="4" max="24" value="12" required>
-        </label>
+          <label>
+            <span>总周期长度（周）</span>
+            <input id="cycle-weeks" type="number" min="4" max="24" value="12" required>
+          </label>
 
-        <label>
-          <span>单次可训练时长（分钟）</span>
-          <input id="duration" type="number" min="20" max="120" value="60" required>
-        </label>
+          <label>
+            <span>单次可训练时长（分钟）</span>
+            <input id="duration" type="number" min="20" max="120" value="60" required>
+          </label>
 
-        <label>
-          <span>训练地点</span>
-          <select id="equipment" required>
-            <option value="home">居家（少器械）</option>
-            <option value="gym">健身房（器械齐全）</option>
-          </select>
-        </label>
+          <label>
+            <span>训练地点</span>
+            <select id="equipment" required>
+              <option value="home">居家（少器械）</option>
+              <option value="gym">健身房（器械齐全）</option>
+            </select>
+          </label>
 
-        <label>
-          <span>体重（kg，可选）</span>
-          <input id="weight" type="number" min="35" max="180" step="0.5" placeholder="例：65">
-        </label>
+          <label>
+            <span>体重（kg，可选）</span>
+            <input id="weight" type="number" min="35" max="180" step="0.5" placeholder="例：65">
+          </label>
 
-        <label>
-          <span>饮食偏好</span>
-          <select id="diet-style" required>
-            <option value="balanced">均衡饮食</option>
-            <option value="high-protein">高蛋白优先</option>
-            <option value="vegetarian">素食友好</option>
-          </select>
-        </label>
+          <label>
+            <span>饮食偏好</span>
+            <select id="diet-style" required>
+              <option value="balanced">均衡饮食</option>
+              <option value="high-protein">高蛋白优先</option>
+              <option value="vegetarian">素食友好</option>
+            </select>
+          </label>
 
-        <label>
-          <span>关注部位（可选）</span>
-          <input id="focus" type="text" placeholder="例：臀腿 / 背部 / 核心">
-        </label>
+          <label>
+            <span>关注部位（可选）</span>
+            <input id="focus" type="text" placeholder="例：臀腿 / 背部 / 核心">
+          </label>
 
-        <button type="submit" class="btn-generate">生成训练 + 饮食计划</button>
-      </form>
+          <button type="submit" class="btn-generate">生成训练 + 饮食计划</button>
+        </form>
+      </section>
     </section>
 
-    <section class="result" id="result" aria-live="polite">
-      <h2>你的一周训练 + 饮食计划</h2>
-      <p class="hint">填写上方信息并点击生成。</p>
+    <section id="result-page" class="result-page is-hidden">
+      <div class="result-toolbar">
+        <h2 class="result-title">计划生成结果</h2>
+        <button id="back-to-form-btn" type="button" class="btn-secondary">返回修改输入</button>
+      </div>
+      <section class="result" id="result" aria-live="polite">
+        <h2>你的一周训练 + 饮食计划</h2>
+        <p class="hint">填写上方信息并点击生成。</p>
+      </section>
     </section>
   </main>
 
