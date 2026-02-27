@@ -12,5 +12,7 @@ services:
         value: production
       - key: SESSION_SECRET
         generateValue: true
+      - key: DATABASE_URL
+        sync: false
       - key: AUTH_USERS_FILE
         value: /tmp/fitforge-users.json

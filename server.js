@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const express = require("express");
 const cookieParser = require("cookie-parser");
 const jwt = require("jsonwebtoken");
+const { Pool } = require("pg");
 require("dotenv").config();
 
 const app = express();
@@ -14,6 +15,17 @@ const hasExplicitSessionSecret = Boolean(process.env.SESSION_SECRET);
 const sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 const sessionMaxAgeMs = 7 * 24 * 60 * 60 * 1000;
 const usersFilePath = process.env.AUTH_USERS_FILE || path.join(__dirname, "data", "users.json");
+const databaseUrl = String(process.env.DATABASE_URL || "").trim();
+const dbSslDisabled = String(process.env.DATABASE_SSL || "").trim().toLowerCase() === "false";
+const usePostgres = Boolean(databaseUrl);
+
+let pool = null;
+if (usePostgres) {
+  pool = new Pool({
+    connectionString: databaseUrl,
+    ssl: dbSslDisabled ? false : { rejectUnauthorized: false }
+  });
+}
 
 app.use(express.json());
 app.use(cookieParser());
@@ -55,6 +67,92 @@ function writeUsers(users) {
   const tempFile = `${usersFilePath}.tmp`;
   fs.writeFileSync(tempFile, JSON.stringify(users, null, 2), "utf8");
   fs.renameSync(tempFile, usersFilePath);
+}
+
+async function initPostgresSchema() {
+  if (!pool) {
+    return;
+  }
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      display_name TEXT NOT NULL DEFAULT '',
+      password_hash TEXT NOT NULL,
+      password_salt TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
+async function getUserByEmail(email) {
+  if (!usePostgres) {
+    const users = readUsers();
+    return findUserByEmail(users, email) || null;
+  }
+  const result = await pool.query(
+    `SELECT id, email, display_name, password_hash, password_salt, created_at
+     FROM users
+     WHERE email = $1
+     LIMIT 1`,
+    [email]
+  );
+  if (result.rowCount < 1) {
+    return null;
+  }
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name,
+    passwordHash: row.password_hash,
+    passwordSalt: row.password_salt,
+    createdAt: row.created_at
+  };
+}
+
+async function createUser({ id, email, displayName, passwordHash, passwordSalt, createdAt }) {
+  if (!usePostgres) {
+    const users = readUsers();
+    users.push({
+      id,
+      email,
+      displayName,
+      passwordHash,
+      passwordSalt,
+      createdAt
+    });
+    writeUsers(users);
+    return {
+      id,
+      email,
+      displayName,
+      passwordHash,
+      passwordSalt,
+      createdAt
+    };
+  }
+
+  const result = await pool.query(
+    `INSERT INTO users (id, email, display_name, password_hash, password_salt, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (email) DO NOTHING
+     RETURNING id, email, display_name, password_hash, password_salt, created_at`,
+    [id, email, displayName, passwordHash, passwordSalt, createdAt]
+  );
+
+  if (result.rowCount < 1) {
+    return null;
+  }
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name,
+    passwordHash: row.password_hash,
+    passwordSalt: row.password_salt,
+    createdAt: row.created_at
+  };
 }
 
 function normalizeEmail(emailInput) {
@@ -146,7 +244,7 @@ function findUserByEmail(users, email) {
   return users.find((item) => item.email === email);
 }
 
-app.post("/api/auth/register", (req, res) => {
+app.post("/api/auth/register", async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password || "");
   const displayName = String(req.body?.displayName || "").trim().slice(0, 30);
@@ -162,35 +260,43 @@ app.post("/api/auth/register", (req, res) => {
     return;
   }
 
-  const users = readUsers();
-  if (findUserByEmail(users, email)) {
-    res.status(409).json({ ok: false, message: "该邮箱已注册，请直接登录。" });
-    return;
+  try {
+    const existing = await getUserByEmail(email);
+    if (existing) {
+      res.status(409).json({ ok: false, message: "该邮箱已注册，请直接登录。" });
+      return;
+    }
+
+    const passwordDigest = hashPassword(password);
+    const createdAt = new Date().toISOString();
+    const created = await createUser({
+      id: crypto.randomUUID(),
+      email,
+      displayName,
+      passwordHash: passwordDigest.hash,
+      passwordSalt: passwordDigest.salt,
+      createdAt
+    });
+    if (!created) {
+      res.status(409).json({ ok: false, message: "该邮箱已注册，请直接登录。" });
+      return;
+    }
+
+    const token = signSessionToken(created);
+    setSessionCookie(res, token);
+
+    res.json({
+      ok: true,
+      emailMasked: maskEmail(email),
+      displayLabel: buildDisplayLabel(created)
+    });
+  } catch (error) {
+    console.error("register_error", error);
+    res.status(500).json({ ok: false, message: "注册失败，请稍后重试。" });
   }
-
-  const passwordDigest = hashPassword(password);
-  const user = {
-    id: crypto.randomUUID(),
-    email,
-    displayName,
-    passwordHash: passwordDigest.hash,
-    passwordSalt: passwordDigest.salt,
-    createdAt: new Date().toISOString()
-  };
-  users.push(user);
-  writeUsers(users);
-
-  const token = signSessionToken(user);
-  setSessionCookie(res, token);
-
-  res.json({
-    ok: true,
-    emailMasked: maskEmail(email),
-    displayLabel: buildDisplayLabel(user)
-  });
 });
 
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password || "");
 
@@ -199,48 +305,56 @@ app.post("/api/auth/login", (req, res) => {
     return;
   }
 
-  const users = readUsers();
-  const user = findUserByEmail(users, email);
-  if (!user) {
-    res.status(401).json({ ok: false, message: "邮箱或密码错误。" });
-    return;
-  }
+  try {
+    const user = await getUserByEmail(email);
+    if (!user) {
+      res.status(401).json({ ok: false, message: "邮箱或密码错误。" });
+      return;
+    }
 
-  const ok = verifyPassword(password, user.passwordHash, user.passwordSalt);
-  if (!ok) {
-    res.status(401).json({ ok: false, message: "邮箱或密码错误。" });
-    return;
-  }
+    const ok = verifyPassword(password, user.passwordHash, user.passwordSalt);
+    if (!ok) {
+      res.status(401).json({ ok: false, message: "邮箱或密码错误。" });
+      return;
+    }
 
-  const token = signSessionToken(user);
-  setSessionCookie(res, token);
-  res.json({
-    ok: true,
-    emailMasked: maskEmail(user.email),
-    displayLabel: buildDisplayLabel(user)
-  });
+    const token = signSessionToken(user);
+    setSessionCookie(res, token);
+    res.json({
+      ok: true,
+      emailMasked: maskEmail(user.email),
+      displayLabel: buildDisplayLabel(user)
+    });
+  } catch (error) {
+    console.error("login_error", error);
+    res.status(500).json({ ok: false, message: "登录失败，请稍后重试。" });
+  }
 });
 
-app.get("/api/auth/session", (req, res) => {
+app.get("/api/auth/session", async (req, res) => {
   const session = readSession(req);
   if (!session?.email) {
     res.status(401).json({ ok: false, loggedIn: false });
     return;
   }
 
-  const users = readUsers();
-  const user = findUserByEmail(users, normalizeEmail(session.email));
-  if (!user) {
-    res.status(401).json({ ok: false, loggedIn: false });
-    return;
-  }
+  try {
+    const user = await getUserByEmail(normalizeEmail(session.email));
+    if (!user) {
+      res.status(401).json({ ok: false, loggedIn: false });
+      return;
+    }
 
-  res.json({
-    ok: true,
-    loggedIn: true,
-    emailMasked: maskEmail(user.email),
-    displayLabel: buildDisplayLabel(user)
-  });
+    res.json({
+      ok: true,
+      loggedIn: true,
+      emailMasked: maskEmail(user.email),
+      displayLabel: buildDisplayLabel(user)
+    });
+  } catch (error) {
+    console.error("session_error", error);
+    res.status(500).json({ ok: false, loggedIn: false });
+  }
 });
 
 app.post("/api/auth/logout", (req, res) => {
@@ -260,10 +374,27 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-app.listen(port, () => {
-  console.log(`FitForge server running at http://localhost:${port}`);
-  if (!hasExplicitSessionSecret) {
-    console.log("SESSION_SECRET not set. Using ephemeral secret for development.");
+async function startServer() {
+  if (usePostgres) {
+    await initPostgresSchema();
+  } else {
+    ensureUsersStore();
   }
-  console.log(`User store: ${usersFilePath}`);
+
+  app.listen(port, () => {
+    console.log(`FitForge server running at http://localhost:${port}`);
+    if (!hasExplicitSessionSecret) {
+      console.log("SESSION_SECRET not set. Using ephemeral secret for development.");
+    }
+    if (usePostgres) {
+      console.log("User store: PostgreSQL (DATABASE_URL)");
+    } else {
+      console.log(`User store: ${usersFilePath}`);
+    }
+  });
+}
+
+startServer().catch((error) => {
+  console.error("Failed to start server", error);
+  process.exit(1);
 });
