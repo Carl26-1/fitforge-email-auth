@@ -1063,6 +1063,86 @@ function buildNutritionSection(nutrition, values) {
   `;
 }
 
+function getMacrocycleTemplate(goalPlanKey, selectedGoal) {
+  if (selectedGoal === "strength" || goalPlanKey === "muscle-gain") {
+    return {
+      label: "力量/增肌周期",
+      focus: ["容量积累", "强度提升", "实现与巩固"],
+      progression: [
+        "第1周：主动作按当前计划执行，动作质量优先。",
+        "第2周：主动作每个核心动作 +1 组，或负荷 +2.5%。",
+        "第3周：保持组数，核心动作负荷 +2.5%-5%。",
+        "第4周（减量周）：主动作总组数 -35%-45%，负荷 -10%-15%。"
+      ]
+    };
+  }
+
+  if (goalPlanKey === "endurance") {
+    return {
+      label: "耐力周期",
+      focus: ["有氧基础", "阈值强化", "巩固与恢复"],
+      progression: [
+        "第1周：Zone2 总时长按基线执行。",
+        "第2周：Zone2 总时长 +5%-10%。",
+        "第3周：增加 1 次阈值/间歇刺激（总量不暴增）。",
+        "第4周（减量周）：总量 -30%-40%，保留少量强度。"
+      ]
+    };
+  }
+
+  return {
+    label: "减脂/体态周期",
+    focus: ["动作巩固与容量", "代谢压力提升", "巩固与恢复"],
+    progression: [
+      "第1周：抗阻 + 有氧按基线执行，控制饮食节奏。",
+      "第2周：总步数/有氧时长 +5%-10%。",
+      "第3周：代谢循环或间歇多 1-2 组。",
+      "第4周（减量周）：抗阻总组数 -30%-40%，优先恢复。"
+    ]
+  };
+}
+
+function buildMacrocycleSection(values, goalProfile) {
+  const cycleWeeks = values.cycleWeeks;
+  const template = getMacrocycleTemplate(goalProfile.planKey, values.goal);
+  const blockCards = [];
+  let startWeek = 1;
+  let blockIndex = 0;
+
+  while (startWeek <= cycleWeeks) {
+    const endWeek = Math.min(cycleWeeks, startWeek + 3);
+    const focus = template.focus[Math.min(blockIndex, template.focus.length - 1)];
+    const stepItems = [];
+    for (let week = startWeek; week <= endWeek; week += 1) {
+      const inBlockWeek = week - startWeek;
+      const stepText = template.progression[Math.min(inBlockWeek, template.progression.length - 1)];
+      stepItems.push(`<li><strong>第 ${week} 周：</strong>${stepText.replace(/^第\d周：/, "")}</li>`);
+    }
+
+    blockCards.push(`
+      <article class="day-card">
+        <h3>第 ${startWeek}-${endWeek} 周 · ${focus}</h3>
+        <p>阶段目标：${template.label}</p>
+        <ul>${stepItems.join("")}</ul>
+      </article>
+    `);
+
+    startWeek = endWeek + 1;
+    blockIndex += 1;
+  }
+
+  return `
+    <section class="nutrition-panel">
+      <h3>大周期总计划（${cycleWeeks} 周）</h3>
+      <p class="nutrition-summary">
+        结构：每 4 周为一个小周期（3 周渐进 + 1 周减量/恢复），总计 ${Math.ceil(cycleWeeks / 4)} 个小周期。
+      </p>
+      <div class="week-grid">${blockCards.join("")}</div>
+      <p class="footnote">进阶原则：每周只提升一个维度（组数、负荷或训练时长），避免同时大幅增加。</p>
+    </section>
+  `;
+}
+
 function buildEvidenceSection(values, config, sessionKeys, goalProfile) {
   const { goal, level } = values;
   const sessions = sessionKeys.map((key) => config.catalog[key]);
@@ -1112,8 +1192,9 @@ function generatePlan(values) {
   result.innerHTML = `
     <h2>你的一周训练 + 饮食计划</h2>
     <p class="plan-summary">
-      目标：${goalProfile.displayLabel}｜水平：${levelLabel(values.level)}｜训练频率：每周 ${values.days} 天｜恢复日：${restDays} 天｜推荐排期：${formatSchedule(trainingDayIndices)}
+      目标：${goalProfile.displayLabel}｜水平：${levelLabel(values.level)}｜训练频率：每周 ${values.days} 天｜恢复日：${restDays} 天｜总周期：${values.cycleWeeks} 周｜推荐排期：${formatSchedule(trainingDayIndices)}
     </p>
+    ${buildMacrocycleSection(values, goalProfile)}
     <div class="week-grid">${weekCards.join("")}</div>
     ${buildEvidenceSection(values, config, sessionKeys, goalProfile)}
     ${buildNutritionSection(nutrition, values)}
@@ -1128,6 +1209,7 @@ form.addEventListener("submit", (event) => {
   }
 
   const days = Number(document.getElementById("days").value);
+  const cycleWeeks = Number(document.getElementById("cycle-weeks").value);
   const duration = Number(document.getElementById("duration").value);
   const weight = Number(document.getElementById("weight").value);
 
@@ -1135,6 +1217,7 @@ form.addEventListener("submit", (event) => {
     goal: goalSelect.value,
     level: document.getElementById("level").value,
     days: Number.isNaN(days) ? 4 : Math.min(6, Math.max(2, days)),
+    cycleWeeks: Number.isNaN(cycleWeeks) ? 12 : Math.min(24, Math.max(4, cycleWeeks)),
     duration: Number.isNaN(duration) ? 60 : Math.min(120, Math.max(20, duration)),
     equipment: document.getElementById("equipment").value,
     weight: Number.isNaN(weight) ? Number.NaN : Math.min(180, Math.max(35, weight)),
