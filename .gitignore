@@ -8,3 +8,6 @@ data/
 .server.err.log
 .tunnel.out.log
 .tunnel.err.log
+
+.vercel
+.vercel-global/

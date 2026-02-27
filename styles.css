@@ -23,7 +23,7 @@ body {
     radial-gradient(1200px 600px at 10% -20%, rgba(255, 255, 255, 0.1), transparent 55%),
     radial-gradient(900px 500px at 100% -15%, rgba(255, 255, 255, 0.08), transparent 60%),
     linear-gradient(140deg, var(--bg) 0%, #060606 100%);
-  font-family: "Manrope", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  font-family: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
   line-height: 1.5;
 }
 
@@ -86,7 +86,7 @@ body::before {
 .hero h1,
 .result h2 {
   margin: 8px 0 0;
-  font-family: "Cormorant Garamond", "Noto Sans SC", serif;
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
   letter-spacing: 0.03em;
 }
 

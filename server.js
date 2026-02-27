@@ -5,7 +5,10 @@ const express = require("express");
 const cookieParser = require("cookie-parser");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
-require("dotenv").config();
+const runningOnVercel = Boolean(process.env.VERCEL);
+if (!runningOnVercel) {
+  require("dotenv").config();
+}
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -14,7 +17,9 @@ const sessionCookieName = "fitforge_session";
 const hasExplicitSessionSecret = Boolean(process.env.SESSION_SECRET);
 const sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 const sessionMaxAgeMs = 7 * 24 * 60 * 60 * 1000;
-const usersFilePath = process.env.AUTH_USERS_FILE || path.join(__dirname, "data", "users.json");
+const usersFilePath = runningOnVercel
+  ? path.join("/tmp", "fitforge-users.json")
+  : (process.env.AUTH_USERS_FILE || path.join(__dirname, "data", "users.json"));
 const databaseUrl = String(process.env.DATABASE_URL || "").trim();
 const dbSslDisabled = String(process.env.DATABASE_SSL || "").trim().toLowerCase() === "false";
 const usePostgres = Boolean(databaseUrl);
@@ -34,8 +39,18 @@ if (usePostgres) {
   });
 }
 
+let storageReadyPromise = null;
+
 app.use(express.json());
 app.use(cookieParser());
+app.use("/api", async (req, res, next) => {
+  try {
+    await ensureStorageReady();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 app.use((req, res, next) => {
   const origin = String(req.headers.origin || "");
   if (origin && corsOrigins.includes(origin)) {
@@ -89,6 +104,19 @@ function writeUsers(users) {
   const tempFile = `${usersFilePath}.tmp`;
   fs.writeFileSync(tempFile, JSON.stringify(users, null, 2), "utf8");
   fs.renameSync(tempFile, usersFilePath);
+}
+
+async function ensureStorageReady() {
+  if (!storageReadyPromise) {
+    storageReadyPromise = (async () => {
+      if (usePostgres) {
+        await initPostgresSchema();
+      } else {
+        ensureUsersStore();
+      }
+    })();
+  }
+  return storageReadyPromise;
 }
 
 async function initPostgresSchema() {
@@ -401,11 +429,7 @@ app.get("*", (req, res) => {
 });
 
 async function startServer() {
-  if (usePostgres) {
-    await initPostgresSchema();
-  } else {
-    ensureUsersStore();
-  }
+  await ensureStorageReady();
 
   app.listen(port, () => {
     console.log(`FitForge server running at http://localhost:${port}`);
@@ -420,7 +444,11 @@ async function startServer() {
   });
 }
 
-startServer().catch((error) => {
-  console.error("Failed to start server", error);
-  process.exit(1);
-});
+if (runningOnVercel) {
+  module.exports = app;
+} else {
+  startServer().catch((error) => {
+    console.error("Failed to start server", error);
+    process.exit(1);
+  });
+}
