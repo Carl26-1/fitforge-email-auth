@@ -14,5 +14,9 @@ services:
         generateValue: true
       - key: DATABASE_URL
         sync: false
+      - key: CORS_ORIGIN
+        value: https://carl26-1.github.io
+      - key: CROSS_SITE_COOKIE
+        value: true
       - key: AUTH_USERS_FILE
         value: /tmp/fitforge-users.json

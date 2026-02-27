@@ -14,6 +14,8 @@ SESSION_SECRET=replace_with_a_long_random_secret
 AUTH_USERS_FILE=./data/users.json
 DATABASE_URL=
 # DATABASE_SSL=false
+CORS_ORIGIN=
+# CROSS_SITE_COOKIE=true
 ```
 
 说明：
@@ -21,6 +23,8 @@ DATABASE_URL=
 - `DATABASE_URL`：填写 PostgreSQL 连接串后，账号将存到云数据库（跨设备可用）。
 - `AUTH_USERS_FILE`：当 `DATABASE_URL` 为空时，回退到本地 JSON 存储（仅开发或临时演示）。
 - `DATABASE_SSL=false`：仅在你的数据库不支持 SSL 时配置（大多数云库不用改）。
+- `CORS_ORIGIN`：允许跨域访问的前端域名（示例：`https://carl26-1.github.io`）。
+- `CROSS_SITE_COOKIE=true`：当前后端与前端是不同域名时需要开启，让 Cookie 可跨站发送。
 
 ## 启动
 ```bash
@@ -35,6 +39,10 @@ npm start
 - `POST /api/auth/login`
 - `GET /api/auth/session`
 - `POST /api/auth/logout`
+
+前端说明：
+- `index.html` 默认把 `window.FITFORGE_API_BASE_URL` 指向 `https://fitforge-free.onrender.com`。
+- 如果你使用了其他后端域名，改这个值即可。
 
 ## 注册字段
 ```json
@@ -65,3 +73,4 @@ npm start
 - 免费层会休眠，首次访问可能慢几秒。
 - 若已配置 `DATABASE_URL`，账号数据将持久化，不会因为实例重建丢失。
 - 若未配置 `DATABASE_URL`，会使用 `/tmp/fitforge-users.json`，重建后可能丢失。
+- 若前端放在 GitHub Pages，请设置 `CORS_ORIGIN=https://carl26-1.github.io` 与 `CROSS_SITE_COOKIE=true`。

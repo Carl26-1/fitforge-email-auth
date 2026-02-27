@@ -18,6 +18,13 @@ const usersFilePath = process.env.AUTH_USERS_FILE || path.join(__dirname, "data"
 const databaseUrl = String(process.env.DATABASE_URL || "").trim();
 const dbSslDisabled = String(process.env.DATABASE_SSL || "").trim().toLowerCase() === "false";
 const usePostgres = Boolean(databaseUrl);
+const corsOrigins = String(process.env.CORS_ORIGIN || "")
+  .split(",")
+  .map((item) => item.trim())
+  .filter(Boolean);
+const hasCorsOrigins = corsOrigins.length > 0;
+const forceCrossSiteCookie = String(process.env.CROSS_SITE_COOKIE || "").trim().toLowerCase() === "true";
+const useCrossSiteCookie = hasCorsOrigins || forceCrossSiteCookie;
 
 let pool = null;
 if (usePostgres) {
@@ -29,6 +36,21 @@ if (usePostgres) {
 
 app.use(express.json());
 app.use(cookieParser());
+app.use((req, res, next) => {
+  const origin = String(req.headers.origin || "");
+  if (origin && corsOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  }
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname)));
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && "body" in err) {
@@ -232,10 +254,12 @@ function readSession(req) {
 }
 
 function setSessionCookie(res, token) {
+  const secureCookie = process.env.NODE_ENV === "production" || useCrossSiteCookie;
+  const sameSiteValue = useCrossSiteCookie ? "none" : "lax";
   res.cookie(sessionCookieName, token, {
     httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    sameSite: sameSiteValue,
+    secure: secureCookie,
     maxAge: sessionMaxAgeMs
   });
 }
@@ -358,10 +382,12 @@ app.get("/api/auth/session", async (req, res) => {
 });
 
 app.post("/api/auth/logout", (req, res) => {
+  const secureCookie = process.env.NODE_ENV === "production" || useCrossSiteCookie;
+  const sameSiteValue = useCrossSiteCookie ? "none" : "lax";
   res.clearCookie(sessionCookieName, {
     httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production"
+    sameSite: sameSiteValue,
+    secure: secureCookie
   });
   res.json({ ok: true });
 });

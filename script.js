@@ -18,8 +18,12 @@ const sessionEmail = document.getElementById("session-email");
 const goalSelect = document.getElementById("goal");
 const customGoalWrapper = document.getElementById("custom-goal-wrapper");
 const customGoalInput = document.getElementById("custom-goal");
+const isGithubPages = window.location.hostname.endsWith("github.io");
+const configuredApiBase = String(window.FITFORGE_API_BASE_URL || "").trim().replace(/\/+$/, "");
+const defaultCloudApiBase = "https://fitforge-free.onrender.com";
+const apiBaseUrl = configuredApiBase || (isGithubPages ? defaultCloudApiBase : "");
 let authMode = "login";
-let useLocalAuth = window.location.hostname.endsWith("github.io") || window.location.protocol === "file:";
+let useLocalAuth = window.location.protocol === "file:";
 const LOCAL_USERS_KEY = "fitforge_local_users_v1";
 const LOCAL_SESSION_KEY = "fitforge_local_session_v1";
 
@@ -315,6 +319,34 @@ function maskEmail(email) {
   return `${name[0]}***${name.slice(-1)}${domain}`;
 }
 
+function defaultAuthHint() {
+  if (useLocalAuth) {
+    return "当前为本地模式（仅当前设备可用）。";
+  }
+  return "请输入邮箱和密码进行登录。";
+}
+
+function buildApiUrl(path) {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+  if (apiBaseUrl && path.startsWith("/")) {
+    return `${apiBaseUrl}${path}`;
+  }
+  return path;
+}
+
+function switchToLocalAuth(reason = "cloud_unavailable") {
+  if (useLocalAuth) {
+    return;
+  }
+  useLocalAuth = true;
+  switchToAuth();
+  if (reason === "cloud_unavailable") {
+    authHint.textContent = "云端账号服务暂不可用，已切换到本地模式（仅当前设备）。";
+  }
+}
+
 function getLocalUsers() {
   try {
     const raw = localStorage.getItem(LOCAL_USERS_KEY);
@@ -414,7 +446,7 @@ function localSession() {
 }
 
 async function apiRequest(url, options = {}) {
-  const response = await fetch(url, {
+  const response = await fetch(buildApiUrl(url), {
     credentials: "include",
     ...options,
     headers: {
@@ -434,7 +466,8 @@ async function apiRequest(url, options = {}) {
 function switchToApp(userLabel) {
   authShell.classList.add("is-hidden");
   appShell.classList.remove("is-hidden");
-  sessionEmail.textContent = `已登录账号：${userLabel}`;
+  const modeLabel = useLocalAuth ? "本地模式" : "云端模式";
+  sessionEmail.textContent = `已登录账号：${userLabel}（${modeLabel}）`;
 }
 
 function switchToAuth() {
@@ -442,7 +475,7 @@ function switchToAuth() {
   authShell.classList.remove("is-hidden");
   passwordInput.value = "";
   confirmPasswordInput.value = "";
-  authHint.textContent = authMode === "register" ? "请填写信息完成注册。" : "请输入邮箱和密码进行登录。";
+  authHint.textContent = authMode === "register" ? "请填写信息完成注册。" : defaultAuthHint();
 }
 
 function setAuthMode(mode) {
@@ -456,7 +489,7 @@ function setAuthMode(mode) {
   authSubmitBtn.textContent = isRegister ? "注册并进入" : "登录并进入";
   modeLoginBtn.classList.toggle("is-active", !isRegister);
   modeRegisterBtn.classList.toggle("is-active", isRegister);
-  authHint.textContent = isRegister ? "请填写信息完成注册。" : "请输入邮箱和密码进行登录。";
+  authHint.textContent = isRegister ? "请填写信息完成注册。" : defaultAuthHint();
 }
 
 async function handleLoginSubmit(event) {
@@ -499,6 +532,10 @@ async function handleLoginSubmit(event) {
         })
       });
       if (!apiResult.response.ok) {
+        if (isGithubPages && apiResult.response.status === 404) {
+          switchToLocalAuth("cloud_unavailable");
+          return;
+        }
         throw new Error(apiResult.payload?.message || (authMode === "register" ? "注册失败。" : "登录失败。"));
       }
       payload = apiResult.payload;
@@ -508,6 +545,10 @@ async function handleLoginSubmit(event) {
     confirmPasswordInput.value = "";
     switchToApp(payload?.displayLabel || payload?.emailMasked || maskEmail(email));
   } catch (error) {
+    if (!useLocalAuth && isGithubPages) {
+      switchToLocalAuth("cloud_unavailable");
+      return;
+    }
     authHint.textContent = error.message || "操作失败，请重试。";
   }
 }
@@ -540,12 +581,20 @@ async function initAuth() {
     const { response, payload } = await apiRequest("/api/auth/session", {
       method: "GET"
     });
+    if (isGithubPages && response.status === 404) {
+      switchToLocalAuth("cloud_unavailable");
+      return;
+    }
     if (!response.ok || !payload?.loggedIn) {
       switchToAuth();
       return;
     }
     switchToApp(payload.displayLabel || payload.emailMasked || "已登录用户");
   } catch {
+    if (isGithubPages) {
+      switchToLocalAuth("cloud_unavailable");
+      return;
+    }
     switchToAuth();
   }
 }
