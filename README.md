@@ -75,6 +75,34 @@ npm start
 - 若未配置 `DATABASE_URL`，会使用 `/tmp/fitforge-users.json`，重建后可能丢失。
 - 若前端放在 GitHub Pages，请设置 `CORS_ORIGIN=https://carl26-1.github.io` 与 `CROSS_SITE_COOKIE=true`。
 
+## Cloudflare 免费部署（推荐）
+项目已支持 Cloudflare Worker + D1（同域前后端，一体部署）。
+
+1. 登录 Cloudflare CLI：
+```bash
+npx wrangler login
+```
+2. 创建 D1 数据库，记录返回的 `database_id`：
+```bash
+npx wrangler d1 create fitforge-users
+```
+3. 把 [wrangler.toml](wrangler.toml) 里的 `database_id` 替换为你的值。
+4. 初始化表结构：
+```bash
+npx wrangler d1 execute fitforge-users --remote --file=schema.sql
+```
+5. 配置会话密钥：
+```bash
+npx wrangler secret put SESSION_SECRET
+```
+6. 部署：
+```bash
+npm run cf:sync
+npx wrangler deploy
+```
+
+部署完成后会得到 `*.workers.dev` 域名，可直接访问并支持跨设备登录。
+
 ## 腾讯云 CloudBase 云托管（中国境内优先）
 项目已提供 `Dockerfile` 和一键脚本 [scripts/tencent-cloudrun-deploy.ps1](scripts/tencent-cloudrun-deploy.ps1)。
 
