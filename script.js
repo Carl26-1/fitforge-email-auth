@@ -836,14 +836,121 @@ function getPrescription(goalPlanKey, selectedGoal, level, sessionType) {
   };
 }
 
+function getExecutionCue(sessionType) {
+  if (sessionType.startsWith("cardio")) {
+    return "先热身 5-8 分钟，主训练后降速 3-5 分钟，保持呼吸节奏稳定。";
+  }
+  if (sessionType === "recovery") {
+    return "动作范围由小到大，配合呼吸，不追求疲劳感。";
+  }
+  if (sessionType === "metabolic") {
+    return "每轮保持动作标准优先，宁可减速也不要变形。";
+  }
+  return "离心约 2 秒、向心约 1 秒，每组保留 1-3 次力竭余量。";
+}
+
+function getExercisePrescriptionLine(sessionType, level, exerciseIndex) {
+  const strengthRules = {
+    beginner: { main: "3-4 组 x 6-8 次", assist: "2-3 组 x 8-12 次", mainRest: "120-180 秒", assistRest: "60-90 秒" },
+    intermediate: { main: "4-5 组 x 4-6 次", assist: "3-4 组 x 6-10 次", mainRest: "150-240 秒", assistRest: "75-120 秒" },
+    advanced: { main: "5-6 组 x 2-5 次", assist: "3-5 组 x 4-8 次", mainRest: "180-300 秒", assistRest: "90-150 秒" }
+  };
+  const hypertrophyRules = {
+    beginner: { main: "3 组 x 8-12 次", assist: "2-3 组 x 10-15 次", mainRest: "75-120 秒", assistRest: "45-75 秒" },
+    intermediate: { main: "4 组 x 6-10 次", assist: "3-4 组 x 8-12 次", mainRest: "90-150 秒", assistRest: "60-90 秒" },
+    advanced: { main: "4-6 组 x 5-8 次", assist: "3-5 组 x 8-12 次", mainRest: "120-180 秒", assistRest: "60-90 秒" }
+  };
+  const enduranceRules = {
+    beginner: { volume: "2-3 组 x 12-15 次", rest: "45-60 秒" },
+    intermediate: { volume: "3 组 x 12-15 次", rest: "45-75 秒" },
+    advanced: { volume: "3-4 组 x 10-15 次", rest: "60-75 秒" }
+  };
+  const intervalRules = {
+    beginner: "6-8 组 x 30 秒工作 / 60 秒恢复",
+    intermediate: "7-10 组 x 40 秒工作 / 40 秒恢复",
+    advanced: "8-12 组 x 45 秒工作 / 30 秒恢复"
+  };
+  const circuitRules = {
+    beginner: { volume: "3 轮 x 每动作 30 秒", rest: "动作间 20 秒，每轮后 90 秒" },
+    intermediate: { volume: "4 轮 x 每动作 40 秒", rest: "动作间 20 秒，每轮后 90 秒" },
+    advanced: { volume: "4-5 轮 x 每动作 45 秒", rest: "动作间 15 秒，每轮后 90-120 秒" }
+  };
+
+  if (sessionType === "strength") {
+    const rule = strengthRules[level];
+    const isMain = exerciseIndex < 2;
+    return `${isMain ? rule.main : rule.assist}｜组间 ${isMain ? rule.mainRest : rule.assistRest}`;
+  }
+
+  if (sessionType === "hypertrophy") {
+    const rule = hypertrophyRules[level];
+    const isMain = exerciseIndex < 2;
+    return `${isMain ? rule.main : rule.assist}｜组间 ${isMain ? rule.mainRest : rule.assistRest}`;
+  }
+
+  if (sessionType === "strength_endurance") {
+    const rule = enduranceRules[level];
+    return `${rule.volume}｜组间 ${rule.rest}`;
+  }
+
+  if (sessionType === "metabolic") {
+    const rule = circuitRules[level];
+    return `${rule.volume}｜${rule.rest}`;
+  }
+
+  if (sessionType === "cardio_zone1") {
+    if (exerciseIndex === 0) {
+      return "25-40 分钟连续稳态（Zone1）｜全程连续";
+    }
+    return "2-3 组 x 8-12 次或 30-45 秒｜组间 30-45 秒";
+  }
+
+  if (sessionType === "cardio_zone2") {
+    if (exerciseIndex === 0) {
+      return "30-60 分钟连续稳态（Zone2）｜全程连续";
+    }
+    return "2 组 x 8-12 次动态活动｜组间 30-45 秒";
+  }
+
+  if (sessionType === "cardio_interval") {
+    if (exerciseIndex === 0) {
+      return `${intervalRules[level]}｜按恢复段休息`;
+    }
+    if (exerciseIndex === 1) {
+      return "3-4 组 x 30-40 秒｜组间 40-60 秒";
+    }
+    return "8-12 分钟降速与整理活动｜持续低强度";
+  }
+
+  if (sessionType === "cardio_long") {
+    if (exerciseIndex === 0) {
+      return "60-90 分钟低强度连续耐力｜保持稳定配速";
+    }
+    return "每 20-30 分钟补水 1 次｜训练中执行";
+  }
+
+  if (sessionType === "recovery") {
+    if (exerciseIndex === 0) {
+      return "20-30 分钟轻松活动｜RPE 2-3";
+    }
+    return "2-3 组 x 30-45 秒｜组间 20-30 秒";
+  }
+
+  const fallback = hypertrophyRules[level];
+  return `${fallback.assist}｜组间 ${fallback.assistRest}`;
+}
+
 function buildDayCard(dayIndex, session, values, goalPlanKey) {
   const { goal, level, equipment, focus, duration } = values;
   const exercises = equipment === "gym" ? session.gym : session.home;
   const prescription = getPrescription(goalPlanKey, goal, level, session.type);
+  const executionCue = getExecutionCue(session.type);
   const focusText = focus.trim() ? `重点补充：${escapeHtml(focus.trim())} 2-3 组` : "";
 
   const items = exercises
-    .map((item) => `<li>${item}</li>`)
+    .map((item, index) => (
+      `<li><strong>${escapeHtml(item)}</strong>：${getExercisePrescriptionLine(session.type, level, index)}</li>`
+    ))
     .join("");
 
   return `
@@ -853,6 +960,7 @@ function buildDayCard(dayIndex, session, values, goalPlanKey) {
       <p>结构：${prescription.structure}</p>
       <p>强度：${prescription.intensity}</p>
       <p>休息：${prescription.rest}</p>
+      <p>执行要点：${executionCue}</p>
       <ul>${items}</ul>
       ${focusText ? `<p>${focusText}</p>` : ""}
     </article>
