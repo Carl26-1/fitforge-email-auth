@@ -41,8 +41,8 @@ npm start
 - `POST /api/auth/logout`
 
 前端说明：
-- `index.html` 默认把 `window.FITFORGE_API_BASE_URL` 指向 `https://fitforge-free.onrender.com`。
-- 如果你使用了其他后端域名，改这个值即可。
+- `index.html` 在 `github.io` 下默认使用 `window.FITFORGE_API_BASE_URL` 指向外部后端。
+- 如果你有自己的后端域名，改这个值即可；同域部署时可留空。
 
 ## 注册字段
 ```json
@@ -74,3 +74,26 @@ npm start
 - 若已配置 `DATABASE_URL`，账号数据将持久化，不会因为实例重建丢失。
 - 若未配置 `DATABASE_URL`，会使用 `/tmp/fitforge-users.json`，重建后可能丢失。
 - 若前端放在 GitHub Pages，请设置 `CORS_ORIGIN=https://carl26-1.github.io` 与 `CROSS_SITE_COOKIE=true`。
+
+## 腾讯云 CloudBase 云托管（中国境内优先）
+项目已提供 `Dockerfile` 和一键脚本 [scripts/tencent-cloudrun-deploy.ps1](scripts/tencent-cloudrun-deploy.ps1)。
+
+1. 在腾讯云 CloudBase 控制台创建环境，拿到 `EnvId`（形如 `xxx-123456`）。
+2. 在腾讯云 CAM 创建 API 密钥：`SecretId` / `SecretKey`（建议子账号最小权限）。
+3. 在项目目录执行：
+
+```powershell
+.\scripts\tencent-cloudrun-deploy.ps1 `
+  -SecretId "你的SecretId" `
+  -SecretKey "你的SecretKey" `
+  -EnvId "你的EnvId" `
+  -ServiceName "fitforge"
+```
+
+4. 首次部署完成后，在 CloudBase 云托管服务中配置环境变量：
+  `SESSION_SECRET`、`DATABASE_URL`（推荐腾讯云 PostgreSQL）、`DATABASE_SSL`（按数据库要求设置）。
+5. 绑定服务域名后即可给他人直接访问。
+
+说明：
+- 若未配置 `DATABASE_URL`，数据默认写容器临时文件，不保证持久化。
+- 同域部署（前后端都在云托管同一服务）不需要设置 `CORS_ORIGIN`。
