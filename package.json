@@ -6,11 +6,7 @@
   "main": "server.js",
   "scripts": {
     "dev": "node --watch server.js",
-    "start": "node server.js",
-    "cf:sync": "powershell -ExecutionPolicy Bypass -File ./scripts/sync-public.ps1",
-    "cf:deploy": "wrangler deploy",
-    "cf:d1:create": "wrangler d1 create fitforge-users",
-    "cf:d1:migrate": "wrangler d1 execute fitforge-users --remote --file=schema.sql"
+    "start": "node server.js"
   },
   "engines": {
     "node": ">=18"

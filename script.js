@@ -18,12 +18,14 @@ const sessionEmail = document.getElementById("session-email");
 const goalSelect = document.getElementById("goal");
 const customGoalWrapper = document.getElementById("custom-goal-wrapper");
 const customGoalInput = document.getElementById("custom-goal");
+const planSubmitBtn = form?.querySelector('button[type="submit"]');
 const isGithubPages = window.location.hostname.endsWith("github.io");
 const configuredApiBase = String(window.FITFORGE_API_BASE_URL || "").trim().replace(/\/+$/, "");
-const defaultCloudApiBase = "https://fitforge-free.onrender.com";
-const apiBaseUrl = configuredApiBase || (isGithubPages ? defaultCloudApiBase : "");
+const apiBaseUrl = configuredApiBase;
 let authMode = "login";
 let useLocalAuth = window.location.protocol === "file:";
+let authSubmitting = false;
+let planGenerating = false;
 const LOCAL_USERS_KEY = "fitforge_local_users_v1";
 const LOCAL_SESSION_KEY = "fitforge_local_session_v1";
 
@@ -446,14 +448,35 @@ function localSession() {
 }
 
 async function apiRequest(url, options = {}) {
-  const response = await fetch(buildApiUrl(url), {
-    credentials: "include",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {})
+  const {
+    timeoutMs = 12000,
+    headers: customHeaders = {},
+    ...restOptions
+  } = options;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response = null;
+
+  try {
+    response = await fetch(buildApiUrl(url), {
+      credentials: "include",
+      ...restOptions,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...customHeaders
+      }
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("请求超时，请稍后重试。");
     }
-  });
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+
   let payload = null;
   try {
     payload = await response.json();
@@ -492,8 +515,27 @@ function setAuthMode(mode) {
   authHint.textContent = isRegister ? "请填写信息完成注册。" : defaultAuthHint();
 }
 
+function setAuthSubmittingState(isSubmitting) {
+  authSubmitting = Boolean(isSubmitting);
+  const disabled = authSubmitting;
+  authSubmitBtn.disabled = disabled;
+  modeLoginBtn.disabled = disabled;
+  modeRegisterBtn.disabled = disabled;
+  emailInput.disabled = disabled;
+  passwordInput.disabled = disabled;
+  displayNameInput.disabled = disabled;
+  confirmPasswordInput.disabled = disabled;
+  authSubmitBtn.textContent = disabled
+    ? (authMode === "register" ? "注册中..." : "登录中...")
+    : (authMode === "register" ? "注册并进入" : "登录并进入");
+}
+
 async function handleLoginSubmit(event) {
   event.preventDefault();
+  if (authSubmitting) {
+    return;
+  }
+
   const email = emailInput.value.trim().toLowerCase();
   const password = passwordInput.value;
 
@@ -506,6 +548,7 @@ async function handleLoginSubmit(event) {
     return;
   }
 
+  setAuthSubmittingState(true);
   try {
     if (authMode === "register" && password !== confirmPasswordInput.value) {
       authHint.textContent = "两次输入的密码不一致。";
@@ -532,7 +575,7 @@ async function handleLoginSubmit(event) {
         })
       });
       if (!apiResult.response.ok) {
-        if (isGithubPages && apiResult.response.status === 404) {
+        if (apiResult.response.status === 404 && isGithubPages) {
           switchToLocalAuth("cloud_unavailable");
           return;
         }
@@ -545,15 +588,21 @@ async function handleLoginSubmit(event) {
     confirmPasswordInput.value = "";
     switchToApp(payload?.displayLabel || payload?.emailMasked || maskEmail(email));
   } catch (error) {
-    if (!useLocalAuth && isGithubPages) {
+    if (!useLocalAuth && isGithubPages && !apiBaseUrl) {
       switchToLocalAuth("cloud_unavailable");
       return;
     }
     authHint.textContent = error.message || "操作失败，请重试。";
+  } finally {
+    setAuthSubmittingState(false);
   }
 }
 
 async function handleLogout() {
+  if (logoutBtn.disabled) {
+    return;
+  }
+  logoutBtn.disabled = true;
   if (useLocalAuth) {
     clearLocalSessionEmail();
   } else {
@@ -564,6 +613,7 @@ async function handleLogout() {
     }
   }
   switchToAuth();
+  logoutBtn.disabled = false;
 }
 
 async function initAuth() {
@@ -965,6 +1015,9 @@ function generatePlan(values) {
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (planGenerating) {
+    return;
+  }
 
   const days = Number(document.getElementById("days").value);
   const duration = Number(document.getElementById("duration").value);
@@ -982,7 +1035,34 @@ form.addEventListener("submit", (event) => {
     focus: document.getElementById("focus").value
   };
 
-  generatePlan(payload);
+  if (payload.goal === "custom" && !String(payload.customGoal || "").trim()) {
+    result.innerHTML = `
+      <h2>你的一周训练 + 饮食计划</h2>
+      <p class="hint">选择“其他（自定义）”时，请填写你的具体目标。</p>
+    `;
+    return;
+  }
+
+  planGenerating = true;
+  if (planSubmitBtn) {
+    planSubmitBtn.disabled = true;
+    planSubmitBtn.textContent = "生成中...";
+  }
+
+  try {
+    generatePlan(payload);
+  } catch {
+    result.innerHTML = `
+      <h2>你的一周训练 + 饮食计划</h2>
+      <p class="hint">生成失败，请检查输入后重试。</p>
+    `;
+  } finally {
+    planGenerating = false;
+    if (planSubmitBtn) {
+      planSubmitBtn.disabled = false;
+      planSubmitBtn.textContent = "生成训练 + 饮食计划";
+    }
+  }
 });
 
 goalSelect.addEventListener("change", syncCustomGoalField);

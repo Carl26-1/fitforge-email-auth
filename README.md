@@ -1,11 +1,16 @@
-# FitForge 邮箱账号系统
+﻿# FitForge 邮箱账号系统
 
-## 安装
+## 本地运行
+
 ```bash
 npm install
+npm start
 ```
 
+访问：`http://localhost:3000/index.html`
+
 ## 环境变量
+
 复制 `.env.example` 为 `.env`：
 
 ```bash
@@ -20,108 +25,27 @@ CORS_ORIGIN=
 
 说明：
 - `SESSION_SECRET` 建议使用高强度随机字符串。
-- `DATABASE_URL`：填写 PostgreSQL 连接串后，账号将存到云数据库（跨设备可用）。
-- `AUTH_USERS_FILE`：当 `DATABASE_URL` 为空时，回退到本地 JSON 存储（仅开发或临时演示）。
-- `DATABASE_SSL=false`：仅在你的数据库不支持 SSL 时配置（大多数云库不用改）。
-- `CORS_ORIGIN`：允许跨域访问的前端域名（示例：`https://carl26-1.github.io`）。
-- `CROSS_SITE_COOKIE=true`：当前后端与前端是不同域名时需要开启，让 Cookie 可跨站发送。
-
-## 启动
-```bash
-npm start
-```
-
-访问：
-- `http://localhost:3000/index.html`
+- `DATABASE_URL` 配置后使用 PostgreSQL 持久化账号数据（推荐生产环境）。
+- 不配置 `DATABASE_URL` 时，回退本地 JSON 存储（仅开发使用）。
 
 ## 账号接口
+
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `GET /api/auth/session`
 - `POST /api/auth/logout`
 
-前端说明：
-- `index.html` 在 `github.io` 下默认使用 `window.FITFORGE_API_BASE_URL` 指向外部后端。
-- 如果你有自己的后端域名，改这个值即可；同域部署时可留空。
+## 线上部署（Vercel）
 
-## 注册字段
-```json
-{
-  "email": "user@example.com",
-  "password": "your_password",
-  "displayName": "Alex"
-}
+项目当前线上主地址：
+- `https://project-six-amber-28.vercel.app`
+
+如需重新部署：
+
+```bash
+npx vercel --prod
 ```
-
-## 特性
-- 邮箱注册/登录
-- 密码 `scrypt` 加密存储
-- HttpOnly Cookie 会话
-- PostgreSQL 持久化用户库（可跨设备登录）
-- 本地 JSON 回退模式（便于本地开发）
-
-## Render 免费层部署（固定域名）
-项目已提供 `render.yaml`，可直接部署到 Render 免费 Web Service。
-
-1. 把代码推到 GitHub 仓库。
-2. 登录 Render，点击 `New +` -> `Blueprint`。
-3. 选择你的 GitHub 仓库，Render 会读取 `render.yaml` 自动创建服务。
-4. 在 Render 服务 `Environment` 中设置 `DATABASE_URL`（推荐用 Supabase/Neon 免费 PostgreSQL）。
-5. 等待构建完成，获得固定地址：`https://<service-name>.onrender.com`。
 
 说明：
-- 免费层会休眠，首次访问可能慢几秒。
-- 若已配置 `DATABASE_URL`，账号数据将持久化，不会因为实例重建丢失。
-- 若未配置 `DATABASE_URL`，会使用 `/tmp/fitforge-users.json`，重建后可能丢失。
-- 若前端放在 GitHub Pages，请设置 `CORS_ORIGIN=https://carl26-1.github.io` 与 `CROSS_SITE_COOKIE=true`。
-
-## Cloudflare 免费部署（推荐）
-项目已支持 Cloudflare Worker + D1（同域前后端，一体部署）。
-
-1. 登录 Cloudflare CLI：
-```bash
-npx wrangler login
-```
-2. 创建 D1 数据库，记录返回的 `database_id`：
-```bash
-npx wrangler d1 create fitforge-users
-```
-3. 把 [wrangler.toml](wrangler.toml) 里的 `database_id` 替换为你的值。
-4. 初始化表结构：
-```bash
-npx wrangler d1 execute fitforge-users --remote --file=schema.sql
-```
-5. 配置会话密钥：
-```bash
-npx wrangler secret put SESSION_SECRET
-```
-6. 部署：
-```bash
-npm run cf:sync
-npx wrangler deploy
-```
-
-部署完成后会得到 `*.workers.dev` 域名，可直接访问并支持跨设备登录。
-
-## 腾讯云 CloudBase 云托管（中国境内优先）
-项目已提供 `Dockerfile` 和一键脚本 [scripts/tencent-cloudrun-deploy.ps1](scripts/tencent-cloudrun-deploy.ps1)。
-
-1. 在腾讯云 CloudBase 控制台创建环境，拿到 `EnvId`（形如 `xxx-123456`）。
-2. 在腾讯云 CAM 创建 API 密钥：`SecretId` / `SecretKey`（建议子账号最小权限）。
-3. 在项目目录执行：
-
-```powershell
-.\scripts\tencent-cloudrun-deploy.ps1 `
-  -SecretId "你的SecretId" `
-  -SecretKey "你的SecretKey" `
-  -EnvId "你的EnvId" `
-  -ServiceName "fitforge"
-```
-
-4. 首次部署完成后，在 CloudBase 云托管服务中配置环境变量：
-  `SESSION_SECRET`、`DATABASE_URL`（推荐腾讯云 PostgreSQL）、`DATABASE_SSL`（按数据库要求设置）。
-5. 绑定服务域名后即可给他人直接访问。
-
-说明：
-- 若未配置 `DATABASE_URL`，数据默认写容器临时文件，不保证持久化。
-- 同域部署（前后端都在云托管同一服务）不需要设置 `CORS_ORIGIN`。
+- 当前方案为同域前后端，不需要前端额外配置 API 域名。
+- 如果未来把前端和后端拆分部署，再配置 `CORS_ORIGIN` 与跨站 Cookie。

@@ -211,6 +211,13 @@ select:focus {
   filter: brightness(1.04);
 }
 
+.btn-generate:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}
+
 .btn-secondary {
   border: 1px solid var(--line-strong);
   border-radius: 10px;
