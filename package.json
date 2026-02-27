@@ -1,0 +1,20 @@
+{
+  "name": "fitforge-email-auth",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FitForge with email account system backend",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2"
+  }
+}

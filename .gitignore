@@ -1,0 +1,10 @@
+node_modules/
+.env
+data/
+*.log
+.node.out.log
+.node.err.log
+.server.out.log
+.server.err.log
+.tunnel.out.log
+.tunnel.err.log
