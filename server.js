@@ -17,6 +17,8 @@ const sessionCookieName = "fitforge_session";
 const hasExplicitSessionSecret = Boolean(process.env.SESSION_SECRET);
 const sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 const sessionMaxAgeMs = 7 * 24 * 60 * 60 * 1000;
+const authProxyBaseUrl = String(process.env.AUTH_PROXY_BASE_URL || "").trim().replace(/\/+$/, "");
+const useAuthProxy = Boolean(authProxyBaseUrl);
 const usersFilePath = runningOnVercel
   ? path.join("/tmp", "fitforge-users.json")
   : (process.env.AUTH_USERS_FILE || path.join(__dirname, "data", "users.json"));
@@ -44,6 +46,10 @@ let storageReadyPromise = null;
 app.use(express.json());
 app.use(cookieParser());
 app.use("/api", async (req, res, next) => {
+  if (useAuthProxy) {
+    next();
+    return;
+  }
   try {
     await ensureStorageReady();
     next();
@@ -296,7 +302,52 @@ function findUserByEmail(users, email) {
   return users.find((item) => item.email === email);
 }
 
+function getSetCookieHeaders(upstreamResponse) {
+  if (typeof upstreamResponse.headers.getSetCookie === "function") {
+    return upstreamResponse.headers.getSetCookie();
+  }
+  const single = upstreamResponse.headers.get("set-cookie");
+  return single ? [single] : [];
+}
+
+async function proxyAuthRequest(req, res, pathName) {
+  const targetUrl = `${authProxyBaseUrl}${pathName}`;
+  const upstreamHeaders = {
+    Accept: "application/json"
+  };
+  if (req.headers.cookie) {
+    upstreamHeaders.Cookie = req.headers.cookie;
+  }
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    upstreamHeaders["Content-Type"] = "application/json";
+  }
+
+  const upstreamResponse = await fetch(targetUrl, {
+    method: req.method,
+    headers: upstreamHeaders,
+    body: req.method === "GET" || req.method === "HEAD" ? undefined : JSON.stringify(req.body || {})
+  });
+
+  const contentType = upstreamResponse.headers.get("content-type") || "application/json; charset=utf-8";
+  const setCookies = getSetCookieHeaders(upstreamResponse);
+  setCookies.forEach((cookie) => res.append("Set-Cookie", cookie));
+  res.status(upstreamResponse.status);
+  res.set("Content-Type", contentType);
+  const text = await upstreamResponse.text();
+  res.send(text);
+}
+
 app.post("/api/auth/register", async (req, res) => {
+  if (useAuthProxy) {
+    try {
+      await proxyAuthRequest(req, res, "/api/auth/register");
+    } catch (error) {
+      console.error("register_proxy_error", error);
+      res.status(502).json({ ok: false, message: "认证服务暂不可用，请稍后重试。" });
+    }
+    return;
+  }
+
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password || "");
   const displayName = String(req.body?.displayName || "").trim().slice(0, 30);
@@ -349,6 +400,16 @@ app.post("/api/auth/register", async (req, res) => {
 });
 
 app.post("/api/auth/login", async (req, res) => {
+  if (useAuthProxy) {
+    try {
+      await proxyAuthRequest(req, res, "/api/auth/login");
+    } catch (error) {
+      console.error("login_proxy_error", error);
+      res.status(502).json({ ok: false, message: "认证服务暂不可用，请稍后重试。" });
+    }
+    return;
+  }
+
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password || "");
 
@@ -384,6 +445,16 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 app.get("/api/auth/session", async (req, res) => {
+  if (useAuthProxy) {
+    try {
+      await proxyAuthRequest(req, res, "/api/auth/session");
+    } catch (error) {
+      console.error("session_proxy_error", error);
+      res.status(502).json({ ok: false, loggedIn: false });
+    }
+    return;
+  }
+
   const session = readSession(req);
   if (!session?.email) {
     res.status(401).json({ ok: false, loggedIn: false });
@@ -410,6 +481,14 @@ app.get("/api/auth/session", async (req, res) => {
 });
 
 app.post("/api/auth/logout", (req, res) => {
+  if (useAuthProxy) {
+    proxyAuthRequest(req, res, "/api/auth/logout").catch((error) => {
+      console.error("logout_proxy_error", error);
+      res.status(502).json({ ok: false, message: "认证服务暂不可用，请稍后重试。" });
+    });
+    return;
+  }
+
   const secureCookie = process.env.NODE_ENV === "production" || useCrossSiteCookie;
   const sameSiteValue = useCrossSiteCookie ? "none" : "lax";
   res.clearCookie(sessionCookieName, {
@@ -429,14 +508,18 @@ app.get("*", (req, res) => {
 });
 
 async function startServer() {
-  await ensureStorageReady();
+  if (!useAuthProxy) {
+    await ensureStorageReady();
+  }
 
   app.listen(port, () => {
     console.log(`FitForge server running at http://localhost:${port}`);
     if (!hasExplicitSessionSecret) {
       console.log("SESSION_SECRET not set. Using ephemeral secret for development.");
     }
-    if (usePostgres) {
+    if (useAuthProxy) {
+      console.log(`User store: Auth proxy (${authProxyBaseUrl})`);
+    } else if (usePostgres) {
       console.log("User store: PostgreSQL (DATABASE_URL)");
     } else {
       console.log(`User store: ${usersFilePath}`);
