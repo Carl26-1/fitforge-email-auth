@@ -19,6 +19,9 @@ const goalSelect = document.getElementById("goal");
 const customGoalWrapper = document.getElementById("custom-goal-wrapper");
 const customGoalInput = document.getElementById("custom-goal");
 let authMode = "login";
+let useLocalAuth = window.location.hostname.endsWith("github.io") || window.location.protocol === "file:";
+const LOCAL_USERS_KEY = "fitforge_local_users_v1";
+const LOCAL_SESSION_KEY = "fitforge_local_session_v1";
 
 const dayNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 const trainingDayPatterns = {
@@ -312,6 +315,104 @@ function maskEmail(email) {
   return `${name[0]}***${name.slice(-1)}${domain}`;
 }
 
+function getLocalUsers() {
+  try {
+    const raw = localStorage.getItem(LOCAL_USERS_KEY);
+    const users = raw ? JSON.parse(raw) : [];
+    return Array.isArray(users) ? users : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalUsers(users) {
+  localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
+}
+
+function getLocalSessionEmail() {
+  try {
+    const raw = localStorage.getItem(LOCAL_SESSION_KEY);
+    const session = raw ? JSON.parse(raw) : null;
+    return session?.email ? String(session.email).trim().toLowerCase() : "";
+  } catch {
+    return "";
+  }
+}
+
+function setLocalSessionEmail(email) {
+  localStorage.setItem(
+    LOCAL_SESSION_KEY,
+    JSON.stringify({
+      email: String(email || "").trim().toLowerCase(),
+      loginAt: Date.now()
+    })
+  );
+}
+
+function clearLocalSessionEmail() {
+  localStorage.removeItem(LOCAL_SESSION_KEY);
+}
+
+function buildDisplayLabel(user, fallbackEmail) {
+  const displayName = String(user?.displayName || "").trim();
+  return displayName || maskEmail(fallbackEmail);
+}
+
+function localRegister({ email, password, displayName }) {
+  const users = getLocalUsers();
+  if (users.some((user) => user.email === email)) {
+    throw new Error("该邮箱已注册，请直接登录。");
+  }
+
+  users.push({
+    email,
+    password,
+    displayName: String(displayName || "").trim(),
+    createdAt: Date.now()
+  });
+  saveLocalUsers(users);
+  setLocalSessionEmail(email);
+
+  const created = users.find((user) => user.email === email);
+  return {
+    displayLabel: buildDisplayLabel(created, email),
+    emailMasked: maskEmail(email)
+  };
+}
+
+function localLogin({ email, password }) {
+  const users = getLocalUsers();
+  const user = users.find((item) => item.email === email);
+  if (!user || user.password !== password) {
+    throw new Error("邮箱或密码错误。");
+  }
+  setLocalSessionEmail(email);
+  return {
+    displayLabel: buildDisplayLabel(user, email),
+    emailMasked: maskEmail(email)
+  };
+}
+
+function localSession() {
+  const email = getLocalSessionEmail();
+  if (!email) {
+    return { loggedIn: false };
+  }
+
+  const users = getLocalUsers();
+  const user = users.find((item) => item.email === email);
+  if (!user) {
+    clearLocalSessionEmail();
+    return { loggedIn: false };
+  }
+
+  return {
+    loggedIn: true,
+    displayLabel: buildDisplayLabel(user, email),
+    emailMasked: maskEmail(email)
+  };
+}
+
 async function apiRequest(url, options = {}) {
   const response = await fetch(url, {
     credentials: "include",
@@ -378,18 +479,31 @@ async function handleLoginSubmit(event) {
       return;
     }
 
-    const endpoint = authMode === "register" ? "/api/auth/register" : "/api/auth/login";
-    const { response, payload } = await apiRequest(endpoint, {
-      method: "POST",
-      body: JSON.stringify({
-        email,
-        password,
-        displayName: displayNameInput.value.trim()
-      })
-    });
-    if (!response.ok) {
-      throw new Error(payload?.message || (authMode === "register" ? "注册失败。" : "登录失败。"));
+    let payload = null;
+    if (useLocalAuth) {
+      payload = authMode === "register"
+        ? localRegister({
+          email,
+          password,
+          displayName: displayNameInput.value.trim()
+        })
+        : localLogin({ email, password });
+    } else {
+      const endpoint = authMode === "register" ? "/api/auth/register" : "/api/auth/login";
+      const apiResult = await apiRequest(endpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          email,
+          password,
+          displayName: displayNameInput.value.trim()
+        })
+      });
+      if (!apiResult.response.ok) {
+        throw new Error(apiResult.payload?.message || (authMode === "register" ? "注册失败。" : "登录失败。"));
+      }
+      payload = apiResult.payload;
     }
+
     passwordInput.value = "";
     confirmPasswordInput.value = "";
     switchToApp(payload?.displayLabel || payload?.emailMasked || maskEmail(email));
@@ -399,15 +513,29 @@ async function handleLoginSubmit(event) {
 }
 
 async function handleLogout() {
-  try {
-    await apiRequest("/api/auth/logout", { method: "POST" });
-  } catch {
-    // Ignore network errors on logout; force local UI reset.
+  if (useLocalAuth) {
+    clearLocalSessionEmail();
+  } else {
+    try {
+      await apiRequest("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Ignore network errors on logout; force local UI reset.
+    }
   }
   switchToAuth();
 }
 
 async function initAuth() {
+  if (useLocalAuth) {
+    const session = localSession();
+    if (!session.loggedIn) {
+      switchToAuth();
+      return;
+    }
+    switchToApp(session.displayLabel || session.emailMasked || "已登录用户");
+    return;
+  }
+
   try {
     const { response, payload } = await apiRequest("/api/auth/session", {
       method: "GET"
