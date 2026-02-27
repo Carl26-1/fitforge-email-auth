@@ -38,9 +38,9 @@ const trainingDayPatterns = {
   6: [0, 1, 3, 4, 5, 6]
 };
 const levelStandards = {
-  beginner: "新手：系统训练不足 6 个月，动作稳定性一般，建议 RPE 5-7。",
-  intermediate: "进阶：系统训练 6-24 个月，主要动作技术稳定，建议 RPE 6-8。",
-  advanced: "高级：系统训练超过 24 个月，可周期化安排，建议 RPE 7-9。"
+  beginner: "新手：系统训练通常不足 6 个月，基础动作模式（蹲/髋铰链/推/拉）尚不稳定。",
+  intermediate: "进阶：系统训练约 6-24 个月，主要动作技术稳定，能连续 8-12 周按计划训练与加负荷。",
+  advanced: "高级：系统训练超过 24 个月，动作效率高，能按周期化管理训练量、强度与恢复。"
 };
 
 const mealTemplates = {
