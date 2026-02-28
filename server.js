@@ -31,6 +31,7 @@ const resendApiBase = String(process.env.RESEND_API_BASE || "https://api.resend.
   .replace(/\/+$/, "");
 const resendApiKey = String(process.env.RESEND_API_KEY || "").trim();
 const emailFromAddress = String(process.env.EMAIL_FROM || "").trim();
+const allowUnsafeCodeFallback = String(process.env.ALLOW_UNSAFE_CODE_FALLBACK || "true").trim().toLowerCase() === "true";
 const useAuthProxy = Boolean(authProxyBaseUrl);
 const usersFilePath = runningOnVercel
   ? path.join("/tmp", "fitforge-users.json")
@@ -515,8 +516,6 @@ app.post("/api/auth/send-code", async (req, res) => {
   }
 
   try {
-    assertEmailProviderReady();
-
     if (!useAuthProxy) {
       const existing = await getUserByEmail(email);
       if (existing) {
@@ -575,16 +574,31 @@ app.post("/api/auth/send-code", async (req, res) => {
       { expiresIn: Math.floor(emailCodeTtlMs / 1000) }
     );
 
-    await sendRegisterEmailCode(email, code);
+    const canSendEmail = Boolean(emailFromAddress && resendApiKey);
+    if (canSendEmail) {
+      await sendRegisterEmailCode(email, code);
+    } else if (!allowUnsafeCodeFallback) {
+      res.status(503).json({ ok: false, message: "邮件服务未配置，请在 .env 设置 EMAIL_FROM 与 RESEND_API_KEY。" });
+      return;
+    }
+
     setEmailCodeCookie(res, token);
     markEmailSent(email, now);
 
-    res.json({
+    const payload = {
       ok: true,
       emailMasked: maskEmail(email),
       cooldownSec: Math.floor(emailCodeCooldownMs / 1000),
       expiresInSec: Math.floor(emailCodeTtlMs / 1000)
-    });
+    };
+    if (!canSendEmail) {
+      payload.delivery = "onscreen";
+      payload.debugCode = code;
+      payload.warning = "当前为临时验证码模式，验证码仅在页面显示。";
+    } else {
+      payload.delivery = "email";
+    }
+    res.json(payload);
   } catch (error) {
     console.error("send_code_error", error);
     const message = String(error?.message || "");

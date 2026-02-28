@@ -653,7 +653,11 @@ async function handleSendEmailCode() {
     }
 
     startEmailCodeCooldown(payload?.cooldownSec || 60);
-    authHint.textContent = `验证码已发送至 ${payload?.emailMasked || maskEmail(email)}，10 分钟内有效。`;
+    if (payload?.delivery === "onscreen" && payload?.debugCode) {
+      authHint.textContent = `临时模式验证码：${payload.debugCode}（10 分钟内有效）。配置邮件服务后将自动改为邮件发送。`;
+    } else {
+      authHint.textContent = `验证码已发送至 ${payload?.emailMasked || maskEmail(email)}，10 分钟内有效。`;
+    }
   } catch (error) {
     if (!useLocalAuth && isGithubPages && !apiBaseUrl) {
       switchToLocalAuth("cloud_unavailable");
