@@ -613,15 +613,10 @@ app.post("/api/auth/send-code", async (req, res) => {
 app.post("/api/auth/register", async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password || "");
-  const verificationCode = String(req.body?.verificationCode || "").trim();
   const displayName = String(req.body?.displayName || "").trim().slice(0, 30);
 
   if (!isValidEmail(email)) {
     res.status(400).json({ ok: false, message: "邮箱格式不正确。" });
-    return;
-  }
-  if (!/^\d{6}$/.test(verificationCode)) {
-    res.status(400).json({ ok: false, message: "请输入 6 位邮箱验证码。" });
     return;
   }
 
@@ -632,17 +627,6 @@ app.post("/api/auth/register", async (req, res) => {
   }
 
   try {
-    const emailCodeSession = readEmailCodeSession(req);
-    if (!emailCodeSession || emailCodeSession.purpose !== "register" || normalizeEmail(emailCodeSession.email) !== email) {
-      res.status(400).json({ ok: false, message: "请先发送邮箱验证码。" });
-      return;
-    }
-    const expectedHash = hashEmailCode(email, verificationCode, emailCodeSession.nonce);
-    if (!secureEqual(expectedHash, emailCodeSession.codeHash)) {
-      res.status(400).json({ ok: false, message: "验证码错误或已过期。" });
-      return;
-    }
-
     if (useAuthProxy) {
       const targetUrl = `${authProxyBaseUrl}/api/auth/register`;
       const upstreamHeaders = {
@@ -664,7 +648,6 @@ app.post("/api/auth/register", async (req, res) => {
       });
 
       const setCookies = getSetCookieHeaders(upstreamResponse);
-      clearEmailCodeCookie(res);
       setCookies.forEach((cookie) => res.append("Set-Cookie", cookie));
       res.status(upstreamResponse.status);
       res.set("Content-Type", upstreamResponse.headers.get("content-type") || "application/json; charset=utf-8");
@@ -694,7 +677,6 @@ app.post("/api/auth/register", async (req, res) => {
     }
 
     const token = signSessionToken(created);
-    clearEmailCodeCookie(res);
     setSessionCookie(res, token);
 
     res.json({
