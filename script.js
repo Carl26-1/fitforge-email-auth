@@ -1247,6 +1247,82 @@ function getMacrocycleTemplate(goalPlanKey, selectedGoal) {
   };
 }
 
+function getMesocycleWeekTemplate(goalPlanKey, selectedGoal) {
+  if (selectedGoal === "strength" || goalPlanKey === "muscle-gain") {
+    return [
+      { label: "周1 基线", load: "训练量 100%", intensity: "主动作约 75-82% 1RM", note: "动作质量与速度优先，建立基线。" },
+      { label: "周2 容量", load: "训练量 105%-115%", intensity: "主动作约 78-85% 1RM", note: "优先加组数或总重复次数，不急于暴增重量。" },
+      { label: "周3 强度", load: "训练量 90%-100%", intensity: "主动作约 82-90% 1RM", note: "降低部分总量，提升核心动作负荷质量。" },
+      { label: "周4 减量", load: "训练量 60%-70%", intensity: "主动作约 70-80% 1RM", note: "保留动作模式，显著降低疲劳，准备下个中周期。" }
+    ];
+  }
+
+  if (goalPlanKey === "endurance") {
+    return [
+      { label: "周1 基线", load: "有氧总量 100%", intensity: "Zone2 主导 + 力量维持", note: "建立配速与心率基准。" },
+      { label: "周2 容量", load: "有氧总量 +8%-12%", intensity: "Zone2 主导", note: "仅提升时长，不同时提升所有强度。" },
+      { label: "周3 强度", load: "有氧总量 95%-105%", intensity: "增加 1 次阈值/间歇", note: "高强度课增加，其他课降强度平衡恢复。" },
+      { label: "周4 减量", load: "有氧总量 -30%-40%", intensity: "保留少量强度刺激", note: "恢复优先，维持节奏感不完全停练。" }
+    ];
+  }
+
+  return [
+    { label: "周1 基线", load: "抗阻与有氧按基线", intensity: "中等强度", note: "先保证执行率与饮食节奏。" },
+    { label: "周2 容量", load: "总活动量 +8%-12%", intensity: "中等强度", note: "优先增加步数/稳态有氧时长。" },
+    { label: "周3 强度", load: "总量 95%-105%", intensity: "代谢/间歇刺激上调", note: "增加 1-2 组代谢或间歇刺激。" },
+    { label: "周4 减量", load: "抗阻总组数 -30%-40%", intensity: "低到中强度", note: "恢复神经和软组织，准备下一轮推进。" }
+  ];
+}
+
+function buildMesocycleSection(values, goalProfile) {
+  const cycleWeeks = values.cycleWeeks;
+  const mesoCount = Math.ceil(cycleWeeks / 4);
+  const macroTemplate = getMacrocycleTemplate(goalProfile.planKey, values.goal);
+  const weekTemplate = getMesocycleWeekTemplate(goalProfile.planKey, values.goal);
+  const mesoCards = [];
+
+  for (let mesoIndex = 0; mesoIndex < mesoCount; mesoIndex += 1) {
+    const startWeek = mesoIndex * 4 + 1;
+    const endWeek = Math.min(cycleWeeks, startWeek + 3);
+    const focus = macroTemplate.focus[Math.min(mesoIndex, macroTemplate.focus.length - 1)];
+    const rows = [];
+
+    for (let offset = 0; offset < 4; offset += 1) {
+      const absoluteWeek = startWeek + offset;
+      if (absoluteWeek > endWeek) {
+        continue;
+      }
+      const item = weekTemplate[offset];
+      rows.push(`
+        <li>
+          <strong>第 ${absoluteWeek} 周（${item.label}）</strong>
+          <span>训练量：${item.load}</span>
+          <span>强度：${item.intensity}</span>
+          <span>要点：${item.note}</span>
+        </li>
+      `);
+    }
+
+    mesoCards.push(`
+      <article class="meso-card">
+        <h4>中周期 ${mesoIndex + 1} · 第 ${startWeek}-${endWeek} 周 · ${focus}</h4>
+        <ul class="meso-week-list">${rows.join("")}</ul>
+      </article>
+    `);
+  }
+
+  return `
+    <section class="nutrition-panel mesocycle-panel">
+      <h3>中周期框架（Mesocycle）</h3>
+      <p class="nutrition-summary">
+        每个中周期默认 4 周（基线/容量/强度/减量），共 ${mesoCount} 个中周期，可直接按周推进并复盘。
+      </p>
+      <div class="meso-grid">${mesoCards.join("")}</div>
+      <p class="footnote">执行规则：单周只提升一个维度（训练量、强度或密度），第 4 周固定减量恢复。</p>
+    </section>
+  `;
+}
+
 function getWeekPhaseLabel(weekNumber) {
   const inBlockWeek = ((weekNumber - 1) % 4) + 1;
   if (inBlockWeek === 1) {
@@ -1360,6 +1436,7 @@ function generatePlan(values) {
     <p class="plan-summary">
       目标：${goalProfile.displayLabel}｜水平：${levelLabel(values.level)}｜训练频率：每周 ${values.days} 天｜恢复日：${restDays} 天｜总周期：${values.cycleWeeks} 周｜推荐排期：${formatSchedule(trainingDayIndices)}
     </p>
+    ${buildMesocycleSection(values, goalProfile)}
     ${buildMacrocycleSection(values, goalProfile, config, sessionKeys, trainingDayIndices)}
     ${buildEvidenceSection(values, config, sessionKeys, goalProfile)}
     ${buildNutritionSection(nutrition, values)}

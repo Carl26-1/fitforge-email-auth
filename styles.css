@@ -517,6 +517,48 @@ select optgroup {
   overflow: hidden;
 }
 
+.mesocycle-panel {
+  overflow: hidden;
+}
+
+.meso-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.meso-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 12px;
+}
+
+.meso-card h4 {
+  margin: 0 0 8px;
+  color: #f3f3f3;
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+}
+
+.meso-week-list {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 6px;
+}
+
+.meso-week-list li {
+  color: #dddddd;
+  font-size: 0.88rem;
+  display: grid;
+  gap: 2px;
+}
+
+.meso-week-list span {
+  color: var(--muted);
+}
+
 .cycle-week-list {
   display: grid;
   gap: 10px;
