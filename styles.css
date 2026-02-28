@@ -12,6 +12,9 @@
   --shadow: rgba(0, 0, 0, 0.55);
   --radius-lg: 18px;
   --radius-md: 12px;
+  --metal-a: #f7f7f7;
+  --metal-b: #cfcfcf;
+  --metal-c: #9f9f9f;
 }
 
 * {
@@ -99,6 +102,11 @@ body::after {
   overflow: hidden;
 }
 
+.card,
+.result {
+  isolation: isolate;
+}
+
 .auth-card::before,
 .card::before,
 .result::before {
@@ -109,6 +117,20 @@ body::after {
   top: 0;
   height: 1px;
   background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.65) 50%, transparent 100%);
+}
+
+.card::after,
+.result::after {
+  content: "";
+  position: absolute;
+  right: -48px;
+  top: -48px;
+  width: 140px;
+  height: 140px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 18px;
+  transform: rotate(18deg);
+  z-index: -1;
 }
 
 .auth-card {
@@ -142,6 +164,8 @@ body::after {
 .hero {
   margin-bottom: 20px;
   animation: fade-up 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  padding-left: 14px;
+  border-left: 2px solid rgba(255, 255, 255, 0.35);
 }
 
 .hero h1 {
@@ -229,6 +253,10 @@ label {
   display: flex;
   flex-direction: column;
   gap: 7px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.008));
 }
 
 label span {
@@ -258,6 +286,7 @@ select {
   color: var(--text);
   background: linear-gradient(180deg, #121212 0%, #0d0d0d 100%);
   transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+  color-scheme: dark;
 }
 
 input::placeholder {
@@ -272,6 +301,24 @@ select:focus {
   transform: translateY(-1px);
 }
 
+select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #d8d8d8 50%),
+    linear-gradient(135deg, #d8d8d8 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 12px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+select option,
+select optgroup {
+  color: #f2f2f2;
+  background: #0d0d0d;
+}
+
 .btn-generate {
   grid-column: 1 / -1;
   margin-top: 6px;
@@ -279,7 +326,7 @@ select:focus {
   border-radius: 11px;
   padding: 12px 14px;
   color: #080808;
-  background: linear-gradient(92deg, #ffffff 0%, #e7e7e7 48%, #c9c9c9 100%);
+  background: linear-gradient(92deg, var(--metal-a) 0%, var(--metal-b) 50%, var(--metal-c) 100%);
   font-weight: 800;
   letter-spacing: 0.03em;
   cursor: pointer;
@@ -289,7 +336,7 @@ select:focus {
 .btn-generate:hover {
   transform: translateY(-1px);
   filter: brightness(1.03);
-  box-shadow: 0 10px 24px rgba(255, 255, 255, 0.16);
+  box-shadow: 0 10px 24px rgba(255, 255, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .btn-generate:disabled {
@@ -318,9 +365,9 @@ select:focus {
 }
 
 .btn-secondary.is-active {
-  background: #efefef;
+  background: linear-gradient(90deg, #f4f4f4 0%, #dfdfdf 100%);
   color: #0a0a0a;
-  border-color: #efefef;
+  border-color: #f2f2f2;
 }
 
 .btn-secondary:disabled {
@@ -397,6 +444,16 @@ select:focus {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.025);
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.day-card:hover,
+.macro-card:hover,
+.meal-item:hover,
+.nutrition-panel:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .day-card {
@@ -602,6 +659,10 @@ select:focus {
   .result {
     padding: 14px;
     border-radius: 13px;
+  }
+
+  label {
+    padding: 9px;
   }
 
   .form-grid,
