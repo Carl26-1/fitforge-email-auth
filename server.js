@@ -18,6 +18,9 @@ const hasExplicitSessionSecret = Boolean(process.env.SESSION_SECRET);
 const sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 const sessionMaxAgeMs = 7 * 24 * 60 * 60 * 1000;
 const authProxyBaseUrl = String(process.env.AUTH_PROXY_BASE_URL || "").trim().replace(/\/+$/, "");
+const configuredSiteUrl = String(process.env.SITE_URL || "https://project-six-amber-28.vercel.app")
+  .trim()
+  .replace(/\/+$/, "");
 const useAuthProxy = Boolean(authProxyBaseUrl);
 const usersFilePath = runningOnVercel
   ? path.join("/tmp", "fitforge-users.json")
@@ -310,6 +313,18 @@ function getSetCookieHeaders(upstreamResponse) {
   return single ? [single] : [];
 }
 
+function resolveSiteUrl(req) {
+  if (configuredSiteUrl) {
+    return configuredSiteUrl;
+  }
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").trim();
+  const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").trim();
+  if (host) {
+    return `${proto}://${host}`.replace(/\/+$/, "");
+  }
+  return "https://project-six-amber-28.vercel.app";
+}
+
 async function proxyAuthRequest(req, res, pathName) {
   const targetUrl = `${authProxyBaseUrl}${pathName}`;
   const upstreamHeaders = {
@@ -501,6 +516,31 @@ app.post("/api/auth/logout", (req, res) => {
 
 app.get("/healthz", (req, res) => {
   res.json({ ok: true });
+});
+
+app.get("/robots.txt", (req, res) => {
+  const baseUrl = resolveSiteUrl(req);
+  const robots = [
+    "User-agent: *",
+    "Allow: /",
+    `Sitemap: ${baseUrl}/sitemap.xml`
+  ].join("\n");
+  res.type("text/plain").send(robots);
+});
+
+app.get("/sitemap.xml", (req, res) => {
+  const baseUrl = resolveSiteUrl(req);
+  const now = new Date().toISOString();
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${baseUrl}/</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>`;
+  res.type("application/xml").send(xml);
 });
 
 app.get("*", (req, res) => {
