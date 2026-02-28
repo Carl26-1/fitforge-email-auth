@@ -24,6 +24,9 @@ const sessionEmail = document.getElementById("session-email");
 const goalSelect = document.getElementById("goal");
 const customGoalWrapper = document.getElementById("custom-goal-wrapper");
 const customGoalInput = document.getElementById("custom-goal");
+const genderSelect = document.getElementById("gender");
+const femaleCycleWrapper = document.getElementById("female-cycle-wrapper");
+const femaleCyclePhaseSelect = document.getElementById("female-cycle-phase");
 const planSubmitBtn = form?.querySelector('button[type="submit"]');
 const isGithubPages = window.location.hostname.endsWith("github.io");
 const configuredApiBase = String(window.FITFORGE_API_BASE_URL || "").trim().replace(/\/+$/, "");
@@ -300,6 +303,23 @@ function levelLabel(level) {
     intermediate: "进阶",
     advanced: "高级"
   }[level];
+}
+
+function genderLabel(gender) {
+  return {
+    male: "男性",
+    female: "女性"
+  }[gender] || "未指定";
+}
+
+function femaleCyclePhaseLabel(phase) {
+  return {
+    menstrual: "经期（出血期）",
+    follicular: "卵泡期",
+    ovulatory: "排卵期",
+    luteal: "黄体期",
+    irregular: "周期不规律 / 难判断"
+  }[phase] || "未填写";
 }
 
 function getLevelStandard(level) {
@@ -1148,6 +1168,17 @@ function syncCustomGoalField() {
   }
 }
 
+function syncFemaleCycleField() {
+  const isFemale = genderSelect?.value === "female";
+  femaleCycleWrapper?.classList.toggle("is-hidden", !isFemale);
+  if (femaleCyclePhaseSelect) {
+    femaleCyclePhaseSelect.required = isFemale;
+    if (!isFemale) {
+      femaleCyclePhaseSelect.value = "menstrual";
+    }
+  }
+}
+
 function getNutritionPlan(values, goalProfile) {
   const { level, days, duration, weight, dietStyle } = values;
   const weightValue = Number.isFinite(weight) ? weight : 65;
@@ -1428,6 +1459,57 @@ function buildEvidenceSection(values, config, sessionKeys, goalProfile) {
   `;
 }
 
+function buildFemaleCycleSection(values) {
+  if (values.gender !== "female") {
+    return "";
+  }
+
+  const phase = values.femaleCyclePhase;
+  const phaseGuide = {
+    menstrual: {
+      title: "经期（出血期）",
+      training: "降低总训练量约 10%-25%，优先中低强度与技术动作。",
+      recovery: "关注睡眠、补水和铁摄入，出现明显不适可替换为恢复课。"
+    },
+    follicular: {
+      title: "卵泡期",
+      training: "可作为推进期，优先安排容量和力量上调。",
+      recovery: "逐周小幅增加负荷，避免一次性暴增。"
+    },
+    ovulatory: {
+      title: "排卵期",
+      training: "可安排高质量主训练，注意热身与动作稳定。",
+      recovery: "强化动态热身和关节稳定，降低技术失误风险。"
+    },
+    luteal: {
+      title: "黄体期",
+      training: "主动作维持质量，减少力竭组和过高密度训练。",
+      recovery: "适当提高碳水与电解质摄入，优先恢复和睡眠管理。"
+    },
+    irregular: {
+      title: "周期不规律 / 难判断",
+      training: "采用主观恢复反馈调整：状态差时减量，状态好时正常推进。",
+      recovery: "连续记录 4-8 周体感、睡眠和训练表现后再微调计划。"
+    }
+  }[phase] || {
+    title: femaleCyclePhaseLabel(phase),
+    training: "按恢复状态做小幅调整。",
+    recovery: "优先保证睡眠和营养。"
+  };
+
+  return `
+    <section class="nutrition-panel">
+      <h3>女性经期变量联动</h3>
+      <p class="nutrition-summary">当前阶段：${phaseGuide.title}</p>
+      <ul class="evidence-list">
+        <li><strong>训练调整：</strong>${phaseGuide.training}</li>
+        <li><strong>恢复建议：</strong>${phaseGuide.recovery}</li>
+      </ul>
+      <p class="footnote">说明：经期训练反应存在个体差异，请以当周体感与恢复状态优先。</p>
+    </section>
+  `;
+}
+
 function generatePlan(values) {
   const goalProfile = resolveGoalProfile(values);
   const config = plans[goalProfile.planKey];
@@ -1435,12 +1517,16 @@ function generatePlan(values) {
   const trainingDayIndices = getTrainingDayIndices(values.days);
   const nutrition = getNutritionPlan(values, goalProfile);
   const restDays = 7 - values.days;
+  const genderSummary = values.gender === "female"
+    ? `性别：${genderLabel(values.gender)}｜经期阶段：${femaleCyclePhaseLabel(values.femaleCyclePhase)}`
+    : `性别：${genderLabel(values.gender)}`;
   result.innerHTML = `
     <h2>你的训练蓝图（周期 + 每日）</h2>
     <p class="plan-summary">
-      目标：${goalProfile.displayLabel}｜水平：${levelLabel(values.level)}｜训练频率：每周 ${values.days} 天｜恢复日：${restDays} 天｜总周期：${values.cycleWeeks} 周｜推荐排期：${formatSchedule(trainingDayIndices)}
+      目标：${goalProfile.displayLabel}｜水平：${levelLabel(values.level)}｜${genderSummary}｜训练频率：每周 ${values.days} 天｜恢复日：${restDays} 天｜总周期：${values.cycleWeeks} 周｜推荐排期：${formatSchedule(trainingDayIndices)}
     </p>
     ${buildMesocycleSection(values, goalProfile)}
+    ${buildFemaleCycleSection(values)}
     ${buildMacrocycleSection(values, goalProfile, config, sessionKeys, trainingDayIndices)}
     ${buildEvidenceSection(values, config, sessionKeys, goalProfile)}
     ${buildNutritionSection(nutrition, values)}
@@ -1467,6 +1553,8 @@ form.addEventListener("submit", (event) => {
     duration: Number.isNaN(duration) ? 60 : Math.min(120, Math.max(20, duration)),
     equipment: document.getElementById("equipment").value,
     weight: Number.isNaN(weight) ? Number.NaN : Math.min(180, Math.max(35, weight)),
+    gender: genderSelect?.value || "male",
+    femaleCyclePhase: femaleCyclePhaseSelect?.value || "menstrual",
     dietStyle: document.getElementById("diet-style").value,
     customGoal: customGoalInput.value,
     focus: document.getElementById("focus").value
@@ -1507,6 +1595,8 @@ form.addEventListener("submit", (event) => {
 
 goalSelect.addEventListener("change", syncCustomGoalField);
 syncCustomGoalField();
+genderSelect?.addEventListener("change", syncFemaleCycleField);
+syncFemaleCycleField();
 backToFormBtn?.addEventListener("click", showPlannerPage);
 sendEmailCodeBtn?.addEventListener("click", handleSendEmailCode);
 modeLoginBtn.addEventListener("click", () => setAuthMode("login"));

@@ -25,7 +25,7 @@ CORS_ORIGIN=
 EMAIL_FROM=
 RESEND_API_KEY=
 # RESEND_API_BASE=https://api.resend.com
-# ALLOW_UNSAFE_CODE_FALLBACK=true
+ALLOW_UNSAFE_CODE_FALLBACK=false
 ```
 
 说明：
@@ -33,8 +33,9 @@ RESEND_API_KEY=
 - `DATABASE_URL` 配置后使用 PostgreSQL 持久化账号数据（推荐生产环境）。
 - 不配置 `DATABASE_URL` 时，回退本地 JSON 存储（仅开发使用）。
 - `AUTH_PROXY_BASE_URL` 可把认证请求转发到外部持久化认证服务（用于避免部署变更导致账号丢失）。
-- `EMAIL_FROM` 和 `RESEND_API_KEY` 用于邮箱验证码发送（Resend）。
-- 若暂时没配邮件服务，`ALLOW_UNSAFE_CODE_FALLBACK=true` 时会启用临时模式：验证码直接显示在页面提示中（仅调试使用）。
+- `EMAIL_FROM` 和 `RESEND_API_KEY` 用于真实邮箱验证码发送（Resend）。
+- 默认 `ALLOW_UNSAFE_CODE_FALLBACK=false`，未配置邮件服务时会拒绝发送验证码。
+- 仅调试时可设 `ALLOW_UNSAFE_CODE_FALLBACK=true`，验证码会显示在页面提示中。
 
 ## 账号接口
 

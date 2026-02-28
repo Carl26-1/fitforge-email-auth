@@ -152,6 +152,25 @@
           </label>
 
           <label>
+            <span>性别</span>
+            <select id="gender" required>
+              <option value="male">男性</option>
+              <option value="female">女性</option>
+            </select>
+          </label>
+
+          <label id="female-cycle-wrapper" class="is-hidden">
+            <span>女性经期阶段</span>
+            <select id="female-cycle-phase">
+              <option value="menstrual">经期（出血期）</option>
+              <option value="follicular">卵泡期</option>
+              <option value="ovulatory">排卵期</option>
+              <option value="luteal">黄体期</option>
+              <option value="irregular">周期不规律 / 难判断</option>
+            </select>
+          </label>
+
+          <label>
             <span>饮食偏好</span>
             <select id="diet-style" required>
               <option value="balanced">均衡饮食</option>

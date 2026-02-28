@@ -31,7 +31,7 @@ const resendApiBase = String(process.env.RESEND_API_BASE || "https://api.resend.
   .replace(/\/+$/, "");
 const resendApiKey = String(process.env.RESEND_API_KEY || "").trim();
 const emailFromAddress = String(process.env.EMAIL_FROM || "").trim();
-const allowUnsafeCodeFallback = String(process.env.ALLOW_UNSAFE_CODE_FALLBACK || "true").trim().toLowerCase() === "true";
+const allowUnsafeCodeFallback = String(process.env.ALLOW_UNSAFE_CODE_FALLBACK || "false").trim().toLowerCase() === "true";
 const useAuthProxy = Boolean(authProxyBaseUrl);
 const usersFilePath = runningOnVercel
   ? path.join("/tmp", "fitforge-users.json")
