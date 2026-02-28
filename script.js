@@ -1227,7 +1227,7 @@ function generatePlan(values) {
   const nutrition = getNutritionPlan(values, goalProfile);
   const restDays = 7 - values.days;
   result.innerHTML = `
-    <h2>你的大周期 + 每日训练计划</h2>
+    <h2>你的训练蓝图（周期 + 每日）</h2>
     <p class="plan-summary">
       目标：${goalProfile.displayLabel}｜水平：${levelLabel(values.level)}｜训练频率：每周 ${values.days} 天｜恢复日：${restDays} 天｜总周期：${values.cycleWeeks} 周｜推荐排期：${formatSchedule(trainingDayIndices)}
     </p>
@@ -1264,7 +1264,7 @@ form.addEventListener("submit", (event) => {
 
   if (payload.goal === "custom" && !String(payload.customGoal || "").trim()) {
     result.innerHTML = `
-      <h2>你的一周训练 + 饮食计划</h2>
+      <h2>你的训练蓝图</h2>
       <p class="hint">选择“其他（自定义）”时，请填写你的具体目标。</p>
     `;
     showResultPage();
@@ -1282,7 +1282,7 @@ form.addEventListener("submit", (event) => {
     showResultPage();
   } catch {
     result.innerHTML = `
-      <h2>你的一周训练 + 饮食计划</h2>
+      <h2>你的训练蓝图</h2>
       <p class="hint">生成失败，请检查输入后重试。</p>
     `;
     showResultPage();
