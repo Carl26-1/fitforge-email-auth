@@ -10,12 +10,15 @@ const emailInput = document.getElementById("email");
 const passwordInput = document.getElementById("password");
 const displayNameInput = document.getElementById("display-name");
 const confirmPasswordInput = document.getElementById("confirm-password");
+const emailCodeInput = document.getElementById("email-code");
 const authHint = document.getElementById("auth-hint");
 const authSubmitBtn = document.getElementById("auth-submit-btn");
+const sendEmailCodeBtn = document.getElementById("send-email-code-btn");
 const modeLoginBtn = document.getElementById("mode-login-btn");
 const modeRegisterBtn = document.getElementById("mode-register-btn");
 const registerNameRow = document.getElementById("register-name-row");
 const registerConfirmRow = document.getElementById("register-confirm-row");
+const registerCodeRow = document.getElementById("register-code-row");
 const logoutBtn = document.getElementById("logout-btn");
 const sessionEmail = document.getElementById("session-email");
 const goalSelect = document.getElementById("goal");
@@ -28,6 +31,9 @@ const apiBaseUrl = configuredApiBase;
 let authMode = "login";
 let useLocalAuth = window.location.protocol === "file:";
 let authSubmitting = false;
+let emailCodeSending = false;
+let emailCodeCooldownTimer = null;
+let emailCodeCooldownLeft = 0;
 let planGenerating = false;
 const LOCAL_USERS_KEY = "fitforge_local_users_v1";
 const LOCAL_SESSION_KEY = "fitforge_local_session_v1";
@@ -331,6 +337,59 @@ function defaultAuthHint() {
   return "请输入邮箱和密码进行登录。";
 }
 
+function clearEmailCodeCooldown() {
+  if (emailCodeCooldownTimer) {
+    clearInterval(emailCodeCooldownTimer);
+    emailCodeCooldownTimer = null;
+  }
+  emailCodeCooldownLeft = 0;
+}
+
+function updateSendCodeButton() {
+  if (!sendEmailCodeBtn) {
+    return;
+  }
+  const isRegister = authMode === "register";
+  const cooldownActive = emailCodeCooldownLeft > 0;
+  const disableByMode = !isRegister || useLocalAuth;
+  const disabled = disableByMode || authSubmitting || emailCodeSending || cooldownActive;
+  sendEmailCodeBtn.disabled = disabled;
+
+  if (!isRegister) {
+    sendEmailCodeBtn.textContent = "发送验证码";
+    return;
+  }
+  if (useLocalAuth) {
+    sendEmailCodeBtn.textContent = "本地模式";
+    return;
+  }
+  if (emailCodeSending) {
+    sendEmailCodeBtn.textContent = "发送中...";
+    return;
+  }
+  if (cooldownActive) {
+    sendEmailCodeBtn.textContent = `${emailCodeCooldownLeft}s 后重发`;
+    return;
+  }
+  sendEmailCodeBtn.textContent = "发送验证码";
+}
+
+function startEmailCodeCooldown(seconds) {
+  clearEmailCodeCooldown();
+  const initial = Number.isFinite(seconds) ? seconds : 60;
+  emailCodeCooldownLeft = Math.max(1, Math.floor(initial));
+  updateSendCodeButton();
+  emailCodeCooldownTimer = setInterval(() => {
+    emailCodeCooldownLeft -= 1;
+    if (emailCodeCooldownLeft <= 0) {
+      clearEmailCodeCooldown();
+      updateSendCodeButton();
+      return;
+    }
+    updateSendCodeButton();
+  }, 1000);
+}
+
 function buildApiUrl(path) {
   if (/^https?:\/\//i.test(path)) {
     return path;
@@ -347,6 +406,7 @@ function switchToLocalAuth(reason = "cloud_unavailable") {
   }
   useLocalAuth = true;
   switchToAuth();
+  setAuthMode(authMode);
   if (reason === "cloud_unavailable") {
     authHint.textContent = "云端账号服务暂不可用，已切换到本地模式（仅当前设备）。";
   }
@@ -514,6 +574,9 @@ function switchToAuth() {
   authShell.classList.remove("is-hidden");
   passwordInput.value = "";
   confirmPasswordInput.value = "";
+  emailCodeInput.value = "";
+  clearEmailCodeCooldown();
+  updateSendCodeButton();
   authHint.textContent = authMode === "register" ? "请填写信息完成注册。" : defaultAuthHint();
 }
 
@@ -522,13 +585,22 @@ function setAuthMode(mode) {
   const isRegister = authMode === "register";
   registerNameRow.classList.toggle("is-hidden", !isRegister);
   registerConfirmRow.classList.toggle("is-hidden", !isRegister);
+  registerCodeRow.classList.toggle("is-hidden", !isRegister);
   displayNameInput.required = false;
   confirmPasswordInput.required = isRegister;
+  emailCodeInput.required = isRegister && !useLocalAuth;
   passwordInput.autocomplete = isRegister ? "new-password" : "current-password";
   authSubmitBtn.textContent = isRegister ? "注册并进入" : "登录并进入";
   modeLoginBtn.classList.toggle("is-active", !isRegister);
   modeRegisterBtn.classList.toggle("is-active", isRegister);
-  authHint.textContent = isRegister ? "请填写信息完成注册。" : defaultAuthHint();
+  if (!isRegister) {
+    emailCodeInput.value = "";
+    clearEmailCodeCooldown();
+  }
+  updateSendCodeButton();
+  authHint.textContent = isRegister
+    ? (useLocalAuth ? "本地模式下注册无需验证码（仅当前设备可用）。" : "请填写信息并完成邮箱验证码校验。")
+    : defaultAuthHint();
 }
 
 function setAuthSubmittingState(isSubmitting) {
@@ -541,9 +613,57 @@ function setAuthSubmittingState(isSubmitting) {
   passwordInput.disabled = disabled;
   displayNameInput.disabled = disabled;
   confirmPasswordInput.disabled = disabled;
+  emailCodeInput.disabled = disabled;
+  updateSendCodeButton();
   authSubmitBtn.textContent = disabled
     ? (authMode === "register" ? "注册中..." : "登录中...")
     : (authMode === "register" ? "注册并进入" : "登录并进入");
+}
+
+async function handleSendEmailCode() {
+  if (authMode !== "register" || authSubmitting || emailCodeSending || emailCodeCooldownLeft > 0) {
+    return;
+  }
+
+  const email = emailInput.value.trim().toLowerCase();
+  if (!isValidEmail(email)) {
+    authHint.textContent = "请先输入正确邮箱，再发送验证码。";
+    return;
+  }
+
+  if (useLocalAuth) {
+    authHint.textContent = "本地模式不支持真实邮箱验证码，请使用云端部署。";
+    return;
+  }
+
+  emailCodeSending = true;
+  updateSendCodeButton();
+
+  try {
+    const { response, payload } = await apiRequest("/api/auth/send-code", {
+      method: "POST",
+      body: JSON.stringify({ email })
+    });
+    if (!response.ok) {
+      if (response.status === 404 && isGithubPages) {
+        switchToLocalAuth("cloud_unavailable");
+        return;
+      }
+      throw new Error(payload?.message || "验证码发送失败，请稍后重试。");
+    }
+
+    startEmailCodeCooldown(payload?.cooldownSec || 60);
+    authHint.textContent = `验证码已发送至 ${payload?.emailMasked || maskEmail(email)}，10 分钟内有效。`;
+  } catch (error) {
+    if (!useLocalAuth && isGithubPages && !apiBaseUrl) {
+      switchToLocalAuth("cloud_unavailable");
+      return;
+    }
+    authHint.textContent = error.message || "验证码发送失败，请稍后重试。";
+  } finally {
+    emailCodeSending = false;
+    updateSendCodeButton();
+  }
 }
 
 async function handleLoginSubmit(event) {
@@ -554,6 +674,7 @@ async function handleLoginSubmit(event) {
 
   const email = emailInput.value.trim().toLowerCase();
   const password = passwordInput.value;
+  const verificationCode = emailCodeInput.value.trim();
 
   if (!isValidEmail(email)) {
     authHint.textContent = "邮箱格式不正确，请检查后重试。";
@@ -568,6 +689,10 @@ async function handleLoginSubmit(event) {
   try {
     if (authMode === "register" && password !== confirmPasswordInput.value) {
       authHint.textContent = "两次输入的密码不一致。";
+      return;
+    }
+    if (authMode === "register" && !useLocalAuth && !/^\d{6}$/.test(verificationCode)) {
+      authHint.textContent = "请输入 6 位邮箱验证码。";
       return;
     }
 
@@ -587,7 +712,8 @@ async function handleLoginSubmit(event) {
         body: JSON.stringify({
           email,
           password,
-          displayName: displayNameInput.value.trim()
+          displayName: displayNameInput.value.trim(),
+          verificationCode: authMode === "register" ? verificationCode : ""
         })
       });
       if (!apiResult.response.ok) {
@@ -602,6 +728,9 @@ async function handleLoginSubmit(event) {
 
     passwordInput.value = "";
     confirmPasswordInput.value = "";
+    emailCodeInput.value = "";
+    clearEmailCodeCooldown();
+    updateSendCodeButton();
     switchToApp(payload?.displayLabel || payload?.emailMasked || maskEmail(email));
   } catch (error) {
     if (!useLocalAuth && isGithubPages && !apiBaseUrl) {
@@ -1298,6 +1427,7 @@ form.addEventListener("submit", (event) => {
 goalSelect.addEventListener("change", syncCustomGoalField);
 syncCustomGoalField();
 backToFormBtn?.addEventListener("click", showPlannerPage);
+sendEmailCodeBtn?.addEventListener("click", handleSendEmailCode);
 modeLoginBtn.addEventListener("click", () => setAuthMode("login"));
 modeRegisterBtn.addEventListener("click", () => setAuthMode("register"));
 setAuthMode("login");

@@ -200,6 +200,18 @@ body::after {
   display: block;
 }
 
+.code-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn-inline {
+  padding: 10px 12px;
+  white-space: nowrap;
+}
+
 .card,
 .result {
   padding: 20px;
@@ -668,6 +680,10 @@ select optgroup {
   .form-grid,
   .macro-grid,
   .auth-switch {
+    grid-template-columns: 1fr;
+  }
+
+  .code-input-row {
     grid-template-columns: 1fr;
   }
 

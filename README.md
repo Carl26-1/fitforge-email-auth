@@ -22,6 +22,9 @@ DATABASE_URL=
 # DATABASE_SSL=false
 CORS_ORIGIN=
 # CROSS_SITE_COOKIE=true
+EMAIL_FROM=
+RESEND_API_KEY=
+# RESEND_API_BASE=https://api.resend.com
 ```
 
 说明：
@@ -29,13 +32,19 @@ CORS_ORIGIN=
 - `DATABASE_URL` 配置后使用 PostgreSQL 持久化账号数据（推荐生产环境）。
 - 不配置 `DATABASE_URL` 时，回退本地 JSON 存储（仅开发使用）。
 - `AUTH_PROXY_BASE_URL` 可把认证请求转发到外部持久化认证服务（用于避免部署变更导致账号丢失）。
+- `EMAIL_FROM` 和 `RESEND_API_KEY` 用于邮箱验证码发送（Resend）。
 
 ## 账号接口
 
+- `POST /api/auth/send-code`
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `GET /api/auth/session`
 - `POST /api/auth/logout`
+
+注册流程：
+1. 先请求 `POST /api/auth/send-code` 发送验证码（10 分钟有效）。
+2. 再请求 `POST /api/auth/register`，并携带 `verificationCode`（6 位）。
 
 ## 线上部署（Vercel）
 

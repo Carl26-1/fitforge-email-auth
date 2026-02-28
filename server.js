@@ -14,13 +14,23 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 
 const sessionCookieName = "fitforge_session";
+const emailCodeCookieName = "fitforge_email_code";
 const hasExplicitSessionSecret = Boolean(process.env.SESSION_SECRET);
 const sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 const sessionMaxAgeMs = 7 * 24 * 60 * 60 * 1000;
+const emailCodeTtlMs = 10 * 60 * 1000;
+const emailCodeCooldownMs = 60 * 1000;
+const emailCodeWindowMs = 10 * 60 * 1000;
+const emailCodeMaxPerWindow = 6;
 const authProxyBaseUrl = String(process.env.AUTH_PROXY_BASE_URL || "").trim().replace(/\/+$/, "");
 const configuredSiteUrl = String(process.env.SITE_URL || "https://project-six-amber-28.vercel.app")
   .trim()
   .replace(/\/+$/, "");
+const resendApiBase = String(process.env.RESEND_API_BASE || "https://api.resend.com")
+  .trim()
+  .replace(/\/+$/, "");
+const resendApiKey = String(process.env.RESEND_API_KEY || "").trim();
+const emailFromAddress = String(process.env.EMAIL_FROM || "").trim();
 const useAuthProxy = Boolean(authProxyBaseUrl);
 const usersFilePath = runningOnVercel
   ? path.join("/tmp", "fitforge-users.json")
@@ -45,6 +55,8 @@ if (usePostgres) {
 }
 
 let storageReadyPromise = null;
+const emailCodeRateByEmail = new Map();
+const emailCodeRateByIp = new Map();
 
 app.use(express.json());
 app.use(cookieParser());
@@ -301,6 +313,149 @@ function setSessionCookie(res, token) {
   });
 }
 
+function setEmailCodeCookie(res, token) {
+  const secureCookie = process.env.NODE_ENV === "production" || useCrossSiteCookie;
+  const sameSiteValue = useCrossSiteCookie ? "none" : "lax";
+  res.cookie(emailCodeCookieName, token, {
+    httpOnly: true,
+    sameSite: sameSiteValue,
+    secure: secureCookie,
+    maxAge: emailCodeTtlMs
+  });
+}
+
+function clearEmailCodeCookie(res) {
+  const secureCookie = process.env.NODE_ENV === "production" || useCrossSiteCookie;
+  const sameSiteValue = useCrossSiteCookie ? "none" : "lax";
+  res.clearCookie(emailCodeCookieName, {
+    httpOnly: true,
+    sameSite: sameSiteValue,
+    secure: secureCookie
+  });
+}
+
+function readEmailCodeSession(req) {
+  const token = req.cookies[emailCodeCookieName];
+  if (!token) {
+    return null;
+  }
+  try {
+    return jwt.verify(token, sessionSecret);
+  } catch {
+    return null;
+  }
+}
+
+function hashEmailCode(email, code, nonce) {
+  return crypto
+    .createHash("sha256")
+    .update(`${normalizeEmail(email)}:${String(code)}:${String(nonce)}:${sessionSecret}`)
+    .digest("hex");
+}
+
+function secureEqual(left, right) {
+  const leftBuf = Buffer.from(String(left || ""), "utf8");
+  const rightBuf = Buffer.from(String(right || ""), "utf8");
+  if (leftBuf.length !== rightBuf.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(leftBuf, rightBuf);
+}
+
+function getClientIp(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)[0];
+  return forwarded || req.ip || "unknown";
+}
+
+function takeRateToken(rateMap, key, { windowMs, limit, now }) {
+  const safeKey = String(key || "").trim();
+  if (!safeKey) {
+    return { ok: true, retryAfterSec: 0 };
+  }
+
+  const existing = rateMap.get(safeKey);
+  if (!existing || now - existing.windowStart > windowMs) {
+    rateMap.set(safeKey, {
+      windowStart: now,
+      count: 1
+    });
+    return { ok: true, retryAfterSec: 0 };
+  }
+
+  if (existing.count >= limit) {
+    const retryMs = Math.max(1000, windowMs - (now - existing.windowStart));
+    return {
+      ok: false,
+      retryAfterSec: Math.ceil(retryMs / 1000)
+    };
+  }
+
+  existing.count += 1;
+  rateMap.set(safeKey, existing);
+  return { ok: true, retryAfterSec: 0 };
+}
+
+function checkEmailCooldown(email, now) {
+  const key = normalizeEmail(email);
+  const existing = emailCodeRateByEmail.get(key);
+  if (!existing?.lastSentAt) {
+    return { ok: true, retryAfterSec: 0 };
+  }
+  const elapsed = now - existing.lastSentAt;
+  if (elapsed >= emailCodeCooldownMs) {
+    return { ok: true, retryAfterSec: 0 };
+  }
+  return {
+    ok: false,
+    retryAfterSec: Math.ceil((emailCodeCooldownMs - elapsed) / 1000)
+  };
+}
+
+function markEmailSent(email, now) {
+  const key = normalizeEmail(email);
+  const existing = emailCodeRateByEmail.get(key) || { windowStart: now, count: 0 };
+  existing.lastSentAt = now;
+  emailCodeRateByEmail.set(key, existing);
+}
+
+function assertEmailProviderReady() {
+  if (!emailFromAddress || !resendApiKey) {
+    throw new Error("邮件服务未配置，请在 .env 设置 EMAIL_FROM 与 RESEND_API_KEY。");
+  }
+}
+
+async function sendRegisterEmailCode(email, code) {
+  assertEmailProviderReady();
+  const response = await fetch(`${resendApiBase}/emails`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from: emailFromAddress,
+      to: [email],
+      subject: "FitForge 注册验证码",
+      html: `
+        <div style="font-family:Arial,Helvetica,sans-serif;color:#111">
+          <h2 style="margin:0 0 12px">FitForge 邮箱验证码</h2>
+          <p style="margin:0 0 10px">你的注册验证码是：</p>
+          <p style="font-size:28px;letter-spacing:4px;font-weight:700;margin:0 0 10px">${code}</p>
+          <p style="margin:0;color:#555">10 分钟内有效。如非本人操作，请忽略此邮件。</p>
+        </div>
+      `
+    })
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`邮件发送失败（${response.status}）${detail ? `: ${detail}` : ""}`);
+  }
+}
+
 function findUserByEmail(users, email) {
   return users.find((item) => item.email === email);
 }
@@ -352,6 +507,103 @@ async function proxyAuthRequest(req, res, pathName) {
   res.send(text);
 }
 
+app.post("/api/auth/send-code", async (req, res) => {
+  if (useAuthProxy) {
+    try {
+      await proxyAuthRequest(req, res, "/api/auth/send-code");
+    } catch (error) {
+      console.error("send_code_proxy_error", error);
+      res.status(502).json({ ok: false, message: "验证码服务暂不可用，请稍后重试。" });
+    }
+    return;
+  }
+
+  const email = normalizeEmail(req.body?.email);
+  if (!isValidEmail(email)) {
+    res.status(400).json({ ok: false, message: "邮箱格式不正确。" });
+    return;
+  }
+
+  try {
+    assertEmailProviderReady();
+
+    const existing = await getUserByEmail(email);
+    if (existing) {
+      res.status(409).json({ ok: false, message: "该邮箱已注册，请直接登录。" });
+      return;
+    }
+
+    const now = Date.now();
+    const cooldown = checkEmailCooldown(email, now);
+    if (!cooldown.ok) {
+      res.status(429).json({
+        ok: false,
+        message: `发送过于频繁，请 ${cooldown.retryAfterSec} 秒后再试。`
+      });
+      return;
+    }
+
+    const emailToken = takeRateToken(emailCodeRateByEmail, email, {
+      windowMs: emailCodeWindowMs,
+      limit: emailCodeMaxPerWindow,
+      now
+    });
+    if (!emailToken.ok) {
+      res.status(429).json({
+        ok: false,
+        message: `该邮箱发送次数过多，请 ${emailToken.retryAfterSec} 秒后再试。`
+      });
+      return;
+    }
+
+    const ipToken = takeRateToken(emailCodeRateByIp, getClientIp(req), {
+      windowMs: emailCodeWindowMs,
+      limit: emailCodeMaxPerWindow * 2,
+      now
+    });
+    if (!ipToken.ok) {
+      res.status(429).json({
+        ok: false,
+        message: `请求过于频繁，请 ${ipToken.retryAfterSec} 秒后再试。`
+      });
+      return;
+    }
+
+    const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+    const nonce = crypto.randomBytes(8).toString("hex");
+    const codeHash = hashEmailCode(email, code, nonce);
+    const token = jwt.sign(
+      {
+        purpose: "register",
+        email,
+        nonce,
+        codeHash
+      },
+      sessionSecret,
+      { expiresIn: Math.floor(emailCodeTtlMs / 1000) }
+    );
+
+    await sendRegisterEmailCode(email, code);
+    setEmailCodeCookie(res, token);
+    markEmailSent(email, now);
+
+    res.json({
+      ok: true,
+      emailMasked: maskEmail(email),
+      cooldownSec: Math.floor(emailCodeCooldownMs / 1000),
+      expiresInSec: Math.floor(emailCodeTtlMs / 1000)
+    });
+  } catch (error) {
+    console.error("send_code_error", error);
+    const message = String(error?.message || "");
+    if (message.includes("邮件服务未配置")) {
+      res.status(503).json({ ok: false, message });
+      return;
+    }
+    res.status(502).json({ ok: false, message: "验证码发送失败，请稍后重试。" });
+  }
+});
+
 app.post("/api/auth/register", async (req, res) => {
   if (useAuthProxy) {
     try {
@@ -365,10 +617,15 @@ app.post("/api/auth/register", async (req, res) => {
 
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password || "");
+  const verificationCode = String(req.body?.verificationCode || "").trim();
   const displayName = String(req.body?.displayName || "").trim().slice(0, 30);
 
   if (!isValidEmail(email)) {
     res.status(400).json({ ok: false, message: "邮箱格式不正确。" });
+    return;
+  }
+  if (!/^\d{6}$/.test(verificationCode)) {
+    res.status(400).json({ ok: false, message: "请输入 6 位邮箱验证码。" });
     return;
   }
 
@@ -379,6 +636,17 @@ app.post("/api/auth/register", async (req, res) => {
   }
 
   try {
+    const emailCodeSession = readEmailCodeSession(req);
+    if (!emailCodeSession || emailCodeSession.purpose !== "register" || normalizeEmail(emailCodeSession.email) !== email) {
+      res.status(400).json({ ok: false, message: "请先发送邮箱验证码。" });
+      return;
+    }
+    const expectedHash = hashEmailCode(email, verificationCode, emailCodeSession.nonce);
+    if (!secureEqual(expectedHash, emailCodeSession.codeHash)) {
+      res.status(400).json({ ok: false, message: "验证码错误或已过期。" });
+      return;
+    }
+
     const existing = await getUserByEmail(email);
     if (existing) {
       res.status(409).json({ ok: false, message: "该邮箱已注册，请直接登录。" });
@@ -401,6 +669,7 @@ app.post("/api/auth/register", async (req, res) => {
     }
 
     const token = signSessionToken(created);
+    clearEmailCodeCookie(res);
     setSessionCookie(res, token);
 
     res.json({
