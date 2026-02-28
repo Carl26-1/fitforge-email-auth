@@ -508,16 +508,6 @@ async function proxyAuthRequest(req, res, pathName) {
 }
 
 app.post("/api/auth/send-code", async (req, res) => {
-  if (useAuthProxy) {
-    try {
-      await proxyAuthRequest(req, res, "/api/auth/send-code");
-    } catch (error) {
-      console.error("send_code_proxy_error", error);
-      res.status(502).json({ ok: false, message: "验证码服务暂不可用，请稍后重试。" });
-    }
-    return;
-  }
-
   const email = normalizeEmail(req.body?.email);
   if (!isValidEmail(email)) {
     res.status(400).json({ ok: false, message: "邮箱格式不正确。" });
@@ -527,10 +517,12 @@ app.post("/api/auth/send-code", async (req, res) => {
   try {
     assertEmailProviderReady();
 
-    const existing = await getUserByEmail(email);
-    if (existing) {
-      res.status(409).json({ ok: false, message: "该邮箱已注册，请直接登录。" });
-      return;
+    if (!useAuthProxy) {
+      const existing = await getUserByEmail(email);
+      if (existing) {
+        res.status(409).json({ ok: false, message: "该邮箱已注册，请直接登录。" });
+        return;
+      }
     }
 
     const now = Date.now();
@@ -605,16 +597,6 @@ app.post("/api/auth/send-code", async (req, res) => {
 });
 
 app.post("/api/auth/register", async (req, res) => {
-  if (useAuthProxy) {
-    try {
-      await proxyAuthRequest(req, res, "/api/auth/register");
-    } catch (error) {
-      console.error("register_proxy_error", error);
-      res.status(502).json({ ok: false, message: "认证服务暂不可用，请稍后重试。" });
-    }
-    return;
-  }
-
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password || "");
   const verificationCode = String(req.body?.verificationCode || "").trim();
@@ -644,6 +626,35 @@ app.post("/api/auth/register", async (req, res) => {
     const expectedHash = hashEmailCode(email, verificationCode, emailCodeSession.nonce);
     if (!secureEqual(expectedHash, emailCodeSession.codeHash)) {
       res.status(400).json({ ok: false, message: "验证码错误或已过期。" });
+      return;
+    }
+
+    if (useAuthProxy) {
+      const targetUrl = `${authProxyBaseUrl}/api/auth/register`;
+      const upstreamHeaders = {
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      };
+      if (req.headers.cookie) {
+        upstreamHeaders.Cookie = req.headers.cookie;
+      }
+
+      const upstreamResponse = await fetch(targetUrl, {
+        method: "POST",
+        headers: upstreamHeaders,
+        body: JSON.stringify({
+          email,
+          password,
+          displayName
+        })
+      });
+
+      const setCookies = getSetCookieHeaders(upstreamResponse);
+      clearEmailCodeCookie(res);
+      setCookies.forEach((cookie) => res.append("Set-Cookie", cookie));
+      res.status(upstreamResponse.status);
+      res.set("Content-Type", upstreamResponse.headers.get("content-type") || "application/json; charset=utf-8");
+      res.send(await upstreamResponse.text());
       return;
     }
 
