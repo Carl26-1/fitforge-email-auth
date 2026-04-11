@@ -29,6 +29,7 @@
   }
   </script>
   <link rel="stylesheet" href="./styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
   <section class="auth-shell" id="auth-shell" aria-live="polite">
@@ -177,19 +178,36 @@
             <input id="focus" type="text" placeholder="例：臀腿 / 背部 / 核心">
           </label>
 
-          <button type="submit" class="btn-generate">生成训练 + 饮食计划</button>
+          <button type="submit" class="btn-generate">向 Coach Alex 获取方案</button>
         </form>
       </section>
     </section>
 
     <section id="result-page" class="result-page is-hidden">
       <div class="result-toolbar">
-        <h2 class="result-title">训练蓝图输出</h2>
+        <h2 class="result-title">Coach Alex 的专属方案</h2>
         <button id="back-to-form-btn" type="button" class="btn-secondary">返回修改输入</button>
+      </div>
+      <div id="coach-header" class="coach-header is-hidden">
+        <div class="coach-avatar">
+          <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="22" cy="22" r="21" stroke="#ff6b35" stroke-width="1.5"/>
+            <circle cx="22" cy="17" r="6" stroke="#ff6b35" stroke-width="1.5"/>
+            <path d="M8 38c0-7.732 6.268-14 14-14s14 6.268 14 14" stroke="#ff6b35" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="coach-meta">
+          <p class="coach-name">Coach Alex</p>
+          <p class="coach-title">FitForge AI 私教 · NSCA-CSCS</p>
+        </div>
+        <div class="coach-status" id="coach-status">
+          <span class="typing-dots"><span></span><span></span><span></span></span>
+          <span id="coach-status-text">正在分析你的数据...</span>
+        </div>
       </div>
       <section class="result" id="result" aria-live="polite">
         <h2>你的训练蓝图</h2>
-        <p class="hint">填写上方信息并点击生成。</p>
+        <p class="hint">填写上方信息，让 Coach Alex 为你生成专属方案。</p>
       </section>
     </section>
   </main>
