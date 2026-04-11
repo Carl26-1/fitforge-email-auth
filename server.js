@@ -23,7 +23,7 @@ const emailCodeCooldownMs = 60 * 1000;
 const emailCodeWindowMs = 10 * 60 * 1000;
 const emailCodeMaxPerWindow = 6;
 const authProxyBaseUrl = String(process.env.AUTH_PROXY_BASE_URL || "").trim().replace(/\/+$/, "");
-const configuredSiteUrl = String(process.env.SITE_URL || "https://project-six-amber-28.vercel.app")
+const configuredSiteUrl = String(process.env.SITE_URL || "https://fitforge-system.vercel.app")
   .trim()
   .replace(/\/+$/, "");
 const resendApiBase = String(process.env.RESEND_API_BASE || "https://api.resend.com")
@@ -478,7 +478,7 @@ function resolveSiteUrl(req) {
   if (host) {
     return `${proto}://${host}`.replace(/\/+$/, "");
   }
-  return "https://project-six-amber-28.vercel.app";
+  return "https://fitforge-system.vercel.app";
 }
 
 async function proxyAuthRequest(req, res, pathName) {
