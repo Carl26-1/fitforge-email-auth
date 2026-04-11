@@ -10,7 +10,8 @@
           "script.js",
           "styles.css",
           "data/**"
-        ]
+        ],
+        "maxDuration": 60
       }
     }
   ],

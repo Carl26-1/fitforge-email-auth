@@ -5,6 +5,7 @@ const express = require("express");
 const cookieParser = require("cookie-parser");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
+const Anthropic = require("@anthropic-ai/sdk");
 const runningOnVercel = Boolean(process.env.VERCEL);
 if (!runningOnVercel) {
   require("dotenv").config();
@@ -23,7 +24,7 @@ const emailCodeCooldownMs = 60 * 1000;
 const emailCodeWindowMs = 10 * 60 * 1000;
 const emailCodeMaxPerWindow = 6;
 const authProxyBaseUrl = String(process.env.AUTH_PROXY_BASE_URL || "").trim().replace(/\/+$/, "");
-const configuredSiteUrl = String(process.env.SITE_URL || "https://project-six-amber-28.vercel.app")
+const configuredSiteUrl = String(process.env.SITE_URL || "https://fitforge-system.vercel.app")
   .trim()
   .replace(/\/+$/, "");
 const resendApiBase = String(process.env.RESEND_API_BASE || "https://api.resend.com")
@@ -39,6 +40,9 @@ const usersFilePath = runningOnVercel
 const databaseUrl = String(process.env.DATABASE_URL || "").trim();
 const dbSslDisabled = String(process.env.DATABASE_SSL || "").trim().toLowerCase() === "false";
 const usePostgres = Boolean(databaseUrl);
+const anthropicApiKey = String(process.env.ANTHROPIC_API_KEY || "").trim();
+const anthropic = anthropicApiKey ? new Anthropic({ apiKey: anthropicApiKey }) : null;
+
 const corsOrigins = String(process.env.CORS_ORIGIN || "")
   .split(",")
   .map((item) => item.trim())
@@ -478,7 +482,7 @@ function resolveSiteUrl(req) {
   if (host) {
     return `${proto}://${host}`.replace(/\/+$/, "");
   }
-  return "https://project-six-amber-28.vercel.app";
+  return "https://fitforge-system.vercel.app";
 }
 
 async function proxyAuthRequest(req, res, pathName) {
@@ -788,6 +792,134 @@ app.post("/api/auth/logout", (req, res) => {
     secure: secureCookie
   });
   res.json({ ok: true });
+});
+
+const COACH_SYSTEM_PROMPT = `你是 FitForge 平台的 AI 私教「Coach Alex」，拥有 NSCA-CSCS 认证和 10 年运动科学背景。
+你说话直接、有活力，像一个真实的私教——不用空话套话，用第一人称和用户对话，偶尔用 emoji 增加亲切感（不过度）。
+
+【输出格式规则】
+使用 Markdown 格式（### 标题，- 列表，**加粗**）。
+结构如下：
+1. 开场白（2-3 句，教练口吻，分析用户情况）
+2. ### 训练周期框架（大周期总览，几个中周期怎么划分）
+3. ### 每周训练安排（具体到每天练什么，几组几次）
+4. ### 推荐动作清单（精准动作名称，如"杠铃背蹲""保加利亚分腿蹲"）
+5. ### 饮食策略（宏量目标、餐次节奏、饮食偏好对应建议）
+6. ### Coach 寄语（一句有力量的鼓励）
+
+【内容约束】
+- 总输出 900-1200 中文字
+- 动作命名精准具体，不要泛泛说"腿部训练"
+- 每个训练日明确列出：训练类型、主要动作、组次安排
+- 营养部分给出具体宏量克数范围（蛋白质/碳水/脂肪）
+- 如涉及伤病风险，在相关建议末加"⚠️ 建议先咨询医生"`;
+
+function buildUserPrompt(data) {
+  const goalLabels = {
+    "fat-loss": "减脂塑形",
+    "muscle-gain": "增肌增力",
+    "endurance": "提升耐力",
+    "strength": "提升力量",
+    "recomp": "体态重塑（减脂+增肌）",
+    "general-fitness": "提升健康体能",
+    "mobility": "灵活性与体态改善",
+    "custom": "自定义目标"
+  };
+  const levelLabels = { beginner: "新手", intermediate: "进阶", advanced: "高级" };
+  const equipmentLabels = { home: "居家（少器械）", gym: "健身房（器械齐全）" };
+  const dietLabels = { balanced: "均衡饮食", "high-protein": "高蛋白优先", vegetarian: "素食友好" };
+  const genderLabels = { male: "男性", female: "女性" };
+  const cyclePhaseLabels = {
+    menstrual: "经期（出血期）",
+    follicular: "卵泡期",
+    ovulatory: "排卵期",
+    luteal: "黄体期",
+    irregular: "周期不规律/难判断"
+  };
+
+  const goal = goalLabels[data.goal] || data.goal;
+  const customGoalLine = data.customGoal ? `（自定义描述：${data.customGoal}）` : "";
+  const level = levelLabels[data.level] || data.level;
+  const equipment = equipmentLabels[data.equipment] || data.equipment;
+  const diet = dietLabels[data.dietStyle] || data.dietStyle;
+  const gender = genderLabels[data.gender] || data.gender;
+  const weightLine = data.weight ? `${data.weight}kg` : "未填写";
+  const focusLine = data.focus ? data.focus : "无特殊要求";
+  const femaleLine = data.gender === "female" && data.femaleCyclePhase
+    ? `\n- 当前经期阶段：${cyclePhaseLabels[data.femaleCyclePhase] || data.femaleCyclePhase}（请在训练建议中考虑激素周期对力量和恢复的影响）`
+    : "";
+
+  return `请为以下用户生成完整的 AI 私教训练方案：
+
+- 训练目标：${goal}${customGoalLine}
+- 训练水平：${level}
+- 每周训练天数：${data.days} 天
+- 单次训练时长：${data.duration} 分钟
+- 总周期长度：${data.cycleWeeks} 周
+- 训练地点：${equipment}
+- 体重：${weightLine}
+- 性别：${gender}${femaleLine}
+- 饮食偏好：${diet}
+- 关注部位：${focusLine}`;
+}
+
+app.post("/api/plan/generate", async (req, res) => {
+  const session = readSession(req);
+  if (!session?.email) {
+    res.status(401).json({ ok: false, message: "请先登录。" });
+    return;
+  }
+
+  if (!anthropic) {
+    res.status(503).json({ ok: false, message: "AI 服务未配置。" });
+    return;
+  }
+
+  const data = req.body || {};
+  const allowedGoals = ["fat-loss", "muscle-gain", "endurance", "strength", "recomp", "general-fitness", "mobility", "custom"];
+  if (!allowedGoals.includes(data.goal)) {
+    res.status(400).json({ ok: false, message: "训练目标无效。" });
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  let aborted = false;
+  req.on("close", () => { aborted = true; });
+
+  try {
+    const stream = anthropic.messages.stream({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1800,
+      system: COACH_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: buildUserPrompt(data) }]
+    });
+
+    for await (const chunk of stream) {
+      if (aborted) break;
+      if (chunk.type === "content_block_delta" && chunk.delta?.type === "text_delta") {
+        const text = chunk.delta.text || "";
+        if (text) {
+          res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        }
+      }
+    }
+
+    if (!aborted) {
+      res.write("data: [DONE]\n\n");
+    }
+  } catch (error) {
+    console.error("plan_generate_error", error);
+    if (!aborted) {
+      res.write(`data: ${JSON.stringify({ error: "AI 生成失败，已为你切换到本地方案。" })}\n\n`);
+    }
+  } finally {
+    res.end();
+  }
 });
 
 app.get("/healthz", (req, res) => {

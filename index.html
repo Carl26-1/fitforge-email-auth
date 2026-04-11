@@ -7,12 +7,12 @@
   <meta name="description" content="FitForge 智能健身计划生成器：输入训练目标、水平和频率，自动生成大周期与每日训练计划，并联动饮食建议。">
   <meta name="keywords" content="fitforge, 健身计划生成器, 训练计划, 增肌, 减脂, Carl's fitness system">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
-  <link rel="canonical" href="https://project-six-amber-28.vercel.app/">
+  <link rel="canonical" href="https://fitforge-system.vercel.app/">
 
   <meta property="og:type" content="website">
   <meta property="og:title" content="FitForge 健身计划生成器">
   <meta property="og:description" content="输入目标与条件，生成大周期+每日训练计划，并联动饮食建议。">
-  <meta property="og:url" content="https://project-six-amber-28.vercel.app/">
+  <meta property="og:url" content="https://fitforge-system.vercel.app/">
   <meta property="og:site_name" content="FitForge">
 
   <meta name="twitter:card" content="summary_large_image">
@@ -24,18 +24,19 @@
     "@context": "https://schema.org",
     "@type": "WebSite",
     "name": "FitForge",
-    "url": "https://project-six-amber-28.vercel.app/",
+    "url": "https://fitforge-system.vercel.app/",
     "inLanguage": "zh-CN"
   }
   </script>
   <link rel="stylesheet" href="./styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
   <section class="auth-shell" id="auth-shell" aria-live="polite">
     <div class="auth-card">
       <p class="tag">FITFORGE</p>
-      <h1>welcome, Carl's fitness system</h1>
-      <p class="subtitle">注册或登录后可使用训练与饮食计划生成。</p>
+      <h1>你的 AI 私教<br>随时在线</h1>
+      <p class="auth-subtitle">生成专属于你的周期化训练与饮食方案。</p>
       <div class="auth-switch">
         <button type="button" id="mode-login-btn" class="btn-secondary is-active">登录</button>
         <button type="button" id="mode-register-btn" class="btn-secondary">注册</button>
@@ -68,8 +69,8 @@
   <main class="app is-hidden" id="app-shell">
     <header class="hero">
       <p class="tag">FITFORGE</p>
-      <h1>FitForge 训练系统</h1>
-      <p class="subtitle">输入你的目标和条件，生成可执行的周期化训练蓝图与饮食策略。</p>
+      <h1>FitForge</h1>
+      <p class="subtitle">输入你的目标与身体数据，AI 生成专属训练蓝图与饮食策略。</p>
       <div class="session-row">
         <p class="hint" id="session-email"></p>
         <button id="logout-btn" type="button" class="btn-secondary">退出登录</button>
@@ -177,19 +178,36 @@
             <input id="focus" type="text" placeholder="例：臀腿 / 背部 / 核心">
           </label>
 
-          <button type="submit" class="btn-generate">生成训练 + 饮食计划</button>
+          <button type="submit" class="btn-generate">向 Coach Alex 获取方案</button>
         </form>
       </section>
     </section>
 
     <section id="result-page" class="result-page is-hidden">
       <div class="result-toolbar">
-        <h2 class="result-title">训练蓝图输出</h2>
+        <h2 class="result-title">Coach Alex 的专属方案</h2>
         <button id="back-to-form-btn" type="button" class="btn-secondary">返回修改输入</button>
+      </div>
+      <div id="coach-header" class="coach-header is-hidden">
+        <div class="coach-avatar">
+          <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="22" cy="22" r="21" stroke="#ff6b35" stroke-width="1.5"/>
+            <circle cx="22" cy="17" r="6" stroke="#ff6b35" stroke-width="1.5"/>
+            <path d="M8 38c0-7.732 6.268-14 14-14s14 6.268 14 14" stroke="#ff6b35" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="coach-meta">
+          <p class="coach-name">Coach Alex</p>
+          <p class="coach-title">FitForge AI 私教 · NSCA-CSCS</p>
+        </div>
+        <div class="coach-status" id="coach-status">
+          <span class="typing-dots"><span></span><span></span><span></span></span>
+          <span id="coach-status-text">正在分析你的数据...</span>
+        </div>
       </div>
       <section class="result" id="result" aria-live="polite">
         <h2>你的训练蓝图</h2>
-        <p class="hint">填写上方信息并点击生成。</p>
+        <p class="hint">填写上方信息，让 Coach Alex 为你生成专属方案。</p>
       </section>
     </section>
   </main>

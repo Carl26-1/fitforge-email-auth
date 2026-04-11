@@ -1402,36 +1402,119 @@ function generatePlan(values) {
   `;
 }
 
-form.addEventListener("submit", (event) => {
+async function generatePlanWithAI(payload) {
+  const coachHeader = document.getElementById(“coach-header”);
+  const coachStatusText = document.getElementById(“coach-status-text”);
+
+  if (coachHeader) coachHeader.classList.remove(“is-hidden”);
+  if (coachStatusText) coachStatusText.textContent = “正在分析你的数据...”;
+
+  result.textContent = “”;
+  result.classList.add(“is-streaming”);
+  showResultPage();
+
+  let accumulated = “”;
+
+  try {
+    const resp = await fetch(“/api/plan/generate”, {
+      method: “POST”,
+      headers: { “Content-Type”: “application/json” },
+      credentials: “include”,
+      body: JSON.stringify(payload)
+    });
+
+    if (resp.status === 503 || resp.status === 401 || !resp.ok) {
+      // AI 不可用，降级到本地模板
+      result.classList.remove(“is-streaming”);
+      generatePlan(payload);
+      if (coachHeader) coachHeader.classList.add(“is-hidden”);
+      return;
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = “”;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split(“\n\n”);
+      buffer = parts.pop();
+
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith(“data: “)) continue;
+        const payload2 = line.slice(6);
+        if (payload2 === “[DONE]”) {
+          // 流结束，用 marked 渲染最终 Markdown
+          if (typeof marked !== “undefined”) {
+            result.innerHTML = marked.parse(accumulated);
+          } else {
+            result.textContent = accumulated;
+          }
+          result.classList.remove(“is-streaming”);
+          if (coachStatusText) coachStatusText.textContent = “方案已生成 ✓”;
+          const typingDots = coachHeader?.querySelector(“.typing-dots”);
+          if (typingDots) typingDots.style.display = “none”;
+          return;
+        }
+        try {
+          const data = JSON.parse(payload2);
+          if (data.error) {
+            result.classList.remove(“is-streaming”);
+            generatePlan(payload);
+            if (coachHeader) coachHeader.classList.add(“is-hidden”);
+            return;
+          }
+          if (data.text) {
+            accumulated += data.text;
+            result.textContent = accumulated;
+          }
+        } catch {
+          // 忽略解析错误
+        }
+      }
+    }
+  } catch {
+    // 网络错误，降级到本地模板
+    result.classList.remove(“is-streaming”);
+    generatePlan(payload);
+    if (coachHeader) coachHeader.classList.add(“is-hidden”);
+  }
+}
+
+form.addEventListener(“submit”, async (event) => {
   event.preventDefault();
   if (planGenerating) {
     return;
   }
 
-  const days = Number(document.getElementById("days").value);
-  const cycleWeeks = Number(document.getElementById("cycle-weeks").value);
-  const duration = Number(document.getElementById("duration").value);
-  const weight = Number(document.getElementById("weight").value);
+  const days = Number(document.getElementById(“days”).value);
+  const cycleWeeks = Number(document.getElementById(“cycle-weeks”).value);
+  const duration = Number(document.getElementById(“duration”).value);
+  const weight = Number(document.getElementById(“weight”).value);
 
   const payload = {
     goal: goalSelect.value,
-    level: document.getElementById("level").value,
+    level: document.getElementById(“level”).value,
     days: Number.isNaN(days) ? 4 : Math.min(6, Math.max(2, days)),
     cycleWeeks: Number.isNaN(cycleWeeks) ? 12 : Math.min(24, Math.max(4, cycleWeeks)),
     duration: Number.isNaN(duration) ? 60 : Math.min(120, Math.max(20, duration)),
-    equipment: document.getElementById("equipment").value,
+    equipment: document.getElementById(“equipment”).value,
     weight: Number.isNaN(weight) ? Number.NaN : Math.min(180, Math.max(35, weight)),
-    gender: genderSelect?.value || "male",
-    femaleCyclePhase: femaleCyclePhaseSelect?.value || "menstrual",
-    dietStyle: document.getElementById("diet-style").value,
+    gender: genderSelect?.value || “male”,
+    femaleCyclePhase: femaleCyclePhaseSelect?.value || “menstrual”,
+    dietStyle: document.getElementById(“diet-style”).value,
     customGoal: customGoalInput.value,
-    focus: document.getElementById("focus").value
+    focus: document.getElementById(“focus”).value
   };
 
-  if (payload.goal === "custom" && !String(payload.customGoal || "").trim()) {
+  if (payload.goal === “custom” && !String(payload.customGoal || “”).trim()) {
     result.innerHTML = `
       <h2>你的训练蓝图</h2>
-      <p class="hint">选择“其他（自定义）”时，请填写你的具体目标。</p>
+      <p class=”hint”>选择”其他（自定义）”时，请填写你的具体目标。</p>
     `;
     showResultPage();
     return;
@@ -1440,23 +1523,22 @@ form.addEventListener("submit", (event) => {
   planGenerating = true;
   if (planSubmitBtn) {
     planSubmitBtn.disabled = true;
-    planSubmitBtn.textContent = "生成中...";
+    planSubmitBtn.textContent = “Coach Alex 正在分析...”;
   }
 
   try {
-    generatePlan(payload);
-    showResultPage();
+    await generatePlanWithAI(payload);
   } catch {
     result.innerHTML = `
       <h2>你的训练蓝图</h2>
-      <p class="hint">生成失败，请检查输入后重试。</p>
+      <p class=”hint”>生成失败，请检查输入后重试。</p>
     `;
     showResultPage();
   } finally {
     planGenerating = false;
     if (planSubmitBtn) {
       planSubmitBtn.disabled = false;
-      planSubmitBtn.textContent = "生成训练 + 饮食计划";
+      planSubmitBtn.textContent = “向 Coach Alex 获取方案”;
     }
   }
 });
